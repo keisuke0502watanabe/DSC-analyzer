@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSC Analyzer — PerkinElmer Pyris</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f4f0;color:#1a1a1a;min-height:100vh}
+.header{background:#1a1a1a;color:#fff;padding:1rem 1.5rem;display:flex;align-items:center;gap:12px}
+.header h1{font-size:16px;font-weight:500;letter-spacing:.02em}
+.header span{font-size:12px;color:#888;margin-left:auto}
+.container{max-width:1100px;margin:0 auto;padding:1.5rem}
+.dropzone{border:1.5px dashed #ccc;border-radius:12px;padding:2.5rem;text-align:center;cursor:pointer;transition:all .2s;background:#fff;margin-bottom:1.25rem}
+.dropzone:hover,.dropzone.drag{border-color:#378ADD;background:#f0f7ff}
+.dropzone h2{font-size:15px;font-weight:500;margin-bottom:.5rem}
+.dropzone p{font-size:13px;color:#666;margin-bottom:1rem}
+.btn{font-size:13px;padding:6px 14px;border-radius:8px;border:1px solid #ccc;background:#fff;color:#333;cursor:pointer;transition:all .15s}
+.btn:hover{background:#f0f0f0}
+.btn.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.seg-btn{font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;transition:all .15s;color:#555}
+.seg-btn.on{font-weight:500}
+.meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+.metric{background:#fff;border-radius:8px;padding:.75rem 1rem;border:1px solid #e8e8e8}
+.metric .label{font-size:11px;color:#888;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.05em}
+.metric .val{font-size:14px;font-weight:500}
+.panel{background:#fff;border-radius:12px;padding:1.25rem;border:1px solid #e8e8e8;margin-bottom:1.25rem}
+.panel-title{font-size:13px;font-weight:500;color:#555;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid #f0f0f0}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ctrl-group{display:flex;align-items:center;gap:6px;margin-right:8px}
+.ctrl-label{font-size:12px;color:#888}
+.chart-wrap{position:relative;width:100%;height:380px;background:#fff;border-radius:12px;padding:1rem;border:1px solid #e8e8e8;margin-bottom:1.25rem}
+.results{background:#fff;border-radius:12px;border:1px solid #e8e8e8;overflow:hidden;margin-bottom:1.25rem}
+.results-header{padding:.75rem 1.25rem;border-bottom:1px solid #f0f0f0;font-size:13px;font-weight:500;background:#fafafa}
+table{width:100%;font-size:12px;border-collapse:collapse}
+th{padding:7px 14px;text-align:left;color:#888;border-bottom:1px solid #f0f0f0;font-weight:400;background:#fafafa}
+td{padding:7px 14px;border-bottom:1px solid #f5f5f5}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafafa}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}
+.badge.melt{background:#dbeeff;color:#185FA5}
+.badge.cryst{background:#d7f5ea;color:#0F6E56}
+.seg-labels{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem}
+input[type=file]{display:none}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem}
+.sum-card{background:#fff;border-radius:8px;padding:.75rem 1rem;border:1px solid #e8e8e8;text-align:center}
+.sum-card .n{font-size:22px;font-weight:500;margin-bottom:.2rem}
+.sum-card .l{font-size:11px;color:#888}
+.highlight-melt{color:#185FA5}
+.highlight-cryst{color:#0F6E56}
+.info-row{font-size:12px;color:#888;margin-top:.5rem}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>DSC Analyzer</h1>
+  <span>PerkinElmer Pyris エクスポート対応</span>
+</div>
+
+<div class="container">
+
+  <div class="dropzone" id="dz">
+    <h2>DSCデータファイルをドロップ</h2>
+    <p>PerkinElmer Pyris からエクスポートしたtxt（ヘッダー＋数値データ形式）</p>
+    <input type="file" id="fileIn" accept=".txt,.csv">
+    <button class="btn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">ファイルを選択</button>
+  </div>
+
+  <div id="mainContent" style="display:none">
+
+    <div class="meta-grid" id="metaGrid"></div>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="panel">
+      <div class="panel-title">セグメント表示切り替え</div>
+      <div class="seg-labels" id="segLabels"></div>
+      <div class="controls">
+        <div class="ctrl-group">
+          <span class="ctrl-label">X軸：</span>
+          <button class="btn active" id="btnTemp" onclick="setXAxis('temp')">温度 (°C)</button>
+          <button class="btn" id="btnTime" onclick="setXAxis('time')">時間 (min)</button>
+        </div>
+        <div class="ctrl-group">
+          <span class="ctrl-label">熱流：</span>
+          <button class="btn active" id="btnHF" onclick="setYCol('hf')">補正後</button>
+          <button class="btn" id="btnUHF" onclick="setYCol('uhf')">Raw</button>
+        </div>
+        <div class="ctrl-group" style="margin-left:auto">
+          <button class="btn" id="btnPeaks" onclick="togglePeaks()">ピーク自動検出</button>
+          <button class="btn" onclick="exportCSV()">結果CSV出力</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-wrap">
+      <canvas id="cvs" role="img" aria-label="DSC熱流量グラフ"></canvas>
+    </div>
+
+    <div class="results" id="resultsSection" style="display:none">
+      <div class="results-header">検出ピーク・熱力学量（ΔH積分値）</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>セグメント</th>
+              <th>種別</th>
+              <th>Tonset (°C)</th>
+              <th>Tpeak (°C)</th>
+              <th>Tend (°C)</th>
+              <th>ΔH (J/g)</th>
+              <th>備考</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+      <div class="info-row" style="padding:.5rem 1rem">※ ΔHはピーク周辺のHeat Flow積分値（直線ベースライン未補正）。精密解析にはベースライン設定が必要です。</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let allData=[], segments=[], xAxis='temp', yCol='hf', showPeaks=false, chart=null, visSegs=new Set();
+let sampleWeight=0, detectedPeaks=[];
+
+const SEG_COLORS=['#378ADD','#1D9E75','#D85A30','#D4537E','#BA7517','#7F77DD','#639922','#888780'];
+
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0])});
+document.getElementById('fileIn').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0])});
+
+function loadFile(f){
+  const r=new FileReader();
+  r.onload=e=>parseDSC(e.target.result);
+  r.readAsText(f,'UTF-8');
+}
+
+function parseDSC(txt){
+  const lines=txt.split('\n');
+  const meta={};
+  let dataStart=-1;
+
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/^\s*Time\s+Unsubtracted/i.test(l)){
+      // next line is unit headers, then data
+      dataStart=i+2;
+      break;
+    }
+    // parse metadata
+    const kv=l.split('\t');
+    if(kv.length>=2){
+      const k=kv[0].trim().replace(/:$/,'');
+      const v=kv.slice(1).join('\t').trim();
+      if(k&&v) meta[k]=v;
+    }
+  }
+
+  if(dataStart<0){alert('データ列が見つかりません。ファイル形式を確認してください。');return;}
+
+  const rows=[];
+  for(let i=dataStart;i<lines.length;i++){
+    const cols=lines[i].trim().split(/\t/);
+    if(cols.length<5) continue;
+    const nums=cols.map(c=>parseFloat(c.trim()));
+    if(nums.slice(0,5).some(isNaN)) continue;
+    // cols: time, hf_raw, hf_base, temp_prog, temp_sample, gas, cal, hf_corrected
+    rows.push({
+      time:nums[0],
+      hf_raw:nums[1],
+      hf_base:nums[2],
+      temp_prog:nums[3],
+      temp:nums[4],
+      hf:nums[7]!==undefined&&!isNaN(nums[7])?nums[7]:nums[1]
+    });
+  }
+
+  if(!rows.length){alert('数値データが読み込めませんでした。');return;}
+
+  allData=rows;
+  sampleWeight=parseFloat(meta['Sample Weight']||meta['Display Weight']||'0');
+
+  detectSegments(rows);
+  renderMeta(meta, rows);
+  renderSummary(rows);
+  renderSegLabels();
+  document.getElementById('mainContent').style.display='block';
+  renderChart();
+}
+
+function detectSegments(rows){
+  segments=[];
+  let dir=0, segStart=0, segIdx=0;
+  const SMOOTH=10;
+
+  function localDir(i){
+    const a=Math.max(0,i-SMOOTH), b=Math.min(rows.length-1,i+SMOOTH);
+    return rows[b].temp-rows[a].temp;
+  }
+
+  for(let i=SMOOTH;i<rows.length-SMOOTH;i+=5){
+    const d=localDir(i);
+    const newDir=Math.abs(d)<0.5?0:(d>0?1:-1);
+    if(newDir!==dir&&i-segStart>100){
+      if(i-segStart>200){
+        const slice=rows.slice(segStart,i);
+        const type=dir===1?'heating':dir===-1?'cooling':'isothermal';
+        const tmin=Math.min(...slice.map(r=>r.temp));
+        const tmax=Math.max(...slice.map(r=>r.temp));
+        segments.push({idx:segIdx++,type,start:segStart,end:i-1,tmin,tmax});
+      }
+      segStart=i; dir=newDir;
+    }
+  }
+  if(rows.length-segStart>200){
+    const slice=rows.slice(segStart);
+    const type=dir===1?'heating':dir===-1?'cooling':'isothermal';
+    const tmin=Math.min(...slice.map(r=>r.temp));
+    const tmax=Math.max(...slice.map(r=>r.temp));
+    segments.push({idx:segIdx++,type,start:segStart,end:rows.length-1,tmin,tmax});
+  }
+
+  // label with type+index
+  const typeCounts={heating:0,cooling:0,isothermal:0};
+  segments.forEach(s=>{
+    typeCounts[s.type]++;
+    const typeLabel=s.type==='heating'?'加熱':s.type==='cooling'?'冷却':'等温';
+    s.label=`${typeLabel} ${typeCounts[s.type]}`;
+  });
+
+  visSegs=new Set(segments.map(s=>s.idx));
+}
+
+function renderMeta(meta, rows){
+  const tmin=Math.min(...rows.map(r=>r.temp));
+  const tmax=Math.max(...rows.map(r=>r.temp));
+  const dur=(rows[rows.length-1].time).toFixed(1);
+  const fields=[
+    ['Sample ID',meta['Sample ID']||'-'],
+    ['重量',sampleWeight?sampleWeight.toFixed(3)+' mg':'-'],
+    ['測定日',meta['Data Collected']||'-'],
+    ['オペレーター',meta['Operator ID']||'-'],
+    ['温度範囲',tmin.toFixed(1)+'〜'+tmax.toFixed(1)+' °C'],
+    ['測定時間',dur+' min ('+rows.length.toLocaleString()+'点)'],
+  ];
+  document.getElementById('metaGrid').innerHTML=fields.map(([l,v])=>
+    `<div class="metric"><div class="label">${l}</div><div class="val">${v}</div></div>`
+  ).join('');
+}
+
+function renderSummary(rows){
+  const nHeat=segments.filter(s=>s.type==='heating').length;
+  const nCool=segments.filter(s=>s.type==='cooling').length;
+  const nIso=segments.filter(s=>s.type==='isothermal').length;
+  document.getElementById('summary').innerHTML=`
+    <div class="sum-card"><div class="n">${segments.length}</div><div class="l">総セグメント数</div></div>
+    <div class="sum-card"><div class="n highlight-melt">${nHeat}</div><div class="l">加熱セグメント</div></div>
+    <div class="sum-card"><div class="n highlight-cryst">${nCool}</div><div class="l">冷却セグメント</div></div>
+    <div class="sum-card"><div class="n">${nIso}</div><div class="l">等温セグメント</div></div>
+  `;
+}
+
+function renderSegLabels(){
+  const div=document.getElementById('segLabels');
+  div.innerHTML='';
+  segments.forEach((s,i)=>{
+    const color=SEG_COLORS[i%SEG_COLORS.length];
+    const btn=document.createElement('button');
+    btn.className='seg-btn on';
+    btn.style.borderColor=color;
+    btn.style.color=color;
+    btn.textContent=`${s.label}  ${s.tmin.toFixed(1)}→${s.tmax.toFixed(1)} °C`;
+    btn.onclick=()=>{
+      if(visSegs.has(s.idx)){visSegs.delete(s.idx);btn.classList.remove('on');}
+      else{visSegs.add(s.idx);btn.classList.add('on');}
+      renderChart();
+    };
+    div.appendChild(btn);
+  });
+}
+
+function setXAxis(v){
+  xAxis=v;
+  document.getElementById('btnTemp').classList.toggle('active',v==='temp');
+  document.getElementById('btnTime').classList.toggle('active',v==='time');
+  renderChart();
+}
+function setYCol(v){
+  yCol=v;
+  document.getElementById('btnHF').classList.toggle('active',v==='hf');
+  document.getElementById('btnUHF').classList.toggle('active',v==='uhf');
+  renderChart();
+}
+function togglePeaks(){
+  showPeaks=!showPeaks;
+  document.getElementById('btnPeaks').classList.toggle('active',showPeaks);
+  renderChart();
+}
+
+function getSampledPts(seg,step=3){
+  return allData.slice(seg.start,seg.end+1)
+    .filter((_,j)=>j%step===0)
+    .map(r=>({
+      x:xAxis==='temp'?parseFloat(r.temp.toFixed(3)):parseFloat(r.time.toFixed(4)),
+      y:parseFloat((yCol==='hf'?r.hf:r.hf_raw).toFixed(5))
+    }));
+}
+
+function detectPeaks(pts, segType){
+  const peaks=[];
+  const W=Math.max(15, Math.floor(pts.length/40));
+  for(let i=W;i<pts.length-W;i++){
+    const v=pts[i].y;
+    let isMin=true,isMax=true;
+    for(let j=i-W;j<=i+W;j++){
+      if(j===i) continue;
+      if(pts[j].y<=v) isMin=false;
+      if(pts[j].y>=v) isMax=false;
+    }
+    if((isMin||isMax)&&(peaks.length===0||Math.abs(i-peaks[peaks.length-1].idx)>W*1.5)){
+      const type=isMax?'max':'min';
+      // for heating: exotherms are maxima (endo=min), for cooling: exotherms are maxima
+      const isMelting=(segType==='heating'&&type==='min')||(segType==='cooling'&&type==='max');
+      const isCryst=(segType==='heating'&&type==='max')||(segType==='cooling'&&type==='min');
+      peaks.push({idx:i,x:pts[i].x,y:v,type,isMelting,isCryst});
+    }
+  }
+  return peaks;
+}
+
+function calcDH_area(pts, peakIdx, weight, halfW=25){
+  const start=Math.max(0,peakIdx-halfW);
+  const end=Math.min(pts.length-1,peakIdx+halfW);
+  const slice=pts.slice(start,end+1);
+  if(slice.length<3) return 0;
+  // linear baseline
+  const x0=slice[0].x, x1=slice[slice.length-1].x;
+  const y0=slice[0].y, y1=slice[slice.length-1].y;
+  let area=0;
+  for(let i=1;i<slice.length;i++){
+    const frac0=(slice[i-1].x-x0)/(x1-x0||1);
+    const frac1=(slice[i].x-x0)/(x1-x0||1);
+    const base0=y0+(y1-y0)*frac0;
+    const base1=y0+(y1-y0)*frac1;
+    const h0=slice[i-1].y-base0;
+    const h1=slice[i].y-base1;
+    const dx=Math.abs(slice[i].x-slice[i-1].x);
+    area+=(h0+h1)/2*dx;
+  }
+  // convert: mW/mg * °C -> J/g (rate 15°C/min -> 60s/min -> /1000 mW->W)
+  // if x is temp: dH = integral(hf dT) / scanRate * 60 (mW/mg * °C * min/°C * 60s/min / 1000 * 1000 = J/g)
+  const scanRate=15; // default, could parse from method
+  const dh=xAxis==='temp'?(area/scanRate*60):(area*60);
+  return Math.abs(dh)*( weight>0?1:1);
+}
+
+function renderChart(){
+  const datasets=[];
+  detectedPeaks=[];
+
+  const visList=segments.filter(s=>visSegs.has(s.idx));
+  visList.forEach((s,i)=>{
+    const color=SEG_COLORS[i%SEG_COLORS.length];
+    const pts=getSampledPts(s);
+    datasets.push({
+      label:s.label, data:pts,
+      borderColor:color, borderWidth:1.5,
+      pointRadius:0, tension:0.15, fill:false,
+    });
+
+    if(showPeaks){
+      const peaks=detectPeaks(pts, s.type);
+      peaks.forEach(p=>{
+        detectedPeaks.push({...p,segLabel:s.label,segType:s.type,color,segPts:pts});
+      });
+    }
+  });
+
+  if(showPeaks&&detectedPeaks.length>0){
+    datasets.push({
+      label:'ピーク',type:'scatter',
+      data:detectedPeaks.map(p=>({x:p.x,y:p.y})),
+      pointBackgroundColor:detectedPeaks.map(p=>p.color),
+      pointBorderColor:'#fff',
+      pointBorderWidth:1.5,
+      pointRadius:7,
+      showLine:false,
+    });
+    renderResults();
+  } else {
+    document.getElementById('resultsSection').style.display='none';
+  }
+
+  if(chart){chart.destroy();}
+  chart=new Chart(document.getElementById('cvs'),{
+    type:'line',
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      animation:{duration:200},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{
+          display:visList.length>1,
+          position:'top',
+          labels:{boxWidth:14,boxHeight:3,font:{size:11},color:'#888',usePointStyle:false}
+        },
+        tooltip:{
+          callbacks:{
+            title:items=>xAxis==='temp'?
+              `T = ${parseFloat(items[0].parsed.x).toFixed(2)} °C`:
+              `t = ${parseFloat(items[0].parsed.x).toFixed(3)} min`,
+            label:item=>`${item.dataset.label}: ${parseFloat(item.parsed.y).toFixed(4)} mW/mg`
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:'linear',
+          title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:12},color:'#888'},
+          grid:{color:'rgba(0,0,0,0.05)'},
+          ticks:{color:'#888',font:{size:11},maxTicksLimit:12}
+        },
+        y:{
+          title:{display:true,text:'熱流 (mW/mg)',font:{size:12},color:'#888'},
+          grid:{color:'rgba(0,0,0,0.05)'},
+          ticks:{color:'#888',font:{size:11},callback:v=>v.toFixed(3)}
+        }
+      }
+    }
+  });
+}
+
+function renderResults(){
+  const body=document.getElementById('resultsBody');
+  body.innerHTML='';
+  detectedPeaks.forEach(p=>{
+    const dh=calcDH_area(p.segPts,p.idx,sampleWeight);
+    const kind=p.segType==='heating'?
+      (p.type==='min'?'融解（吸熱）':'結晶化（発熱）'):
+      (p.type==='max'?'結晶化（発熱）':'融解（吸熱）');
+    const badgeCls=kind.startsWith('融解')?'melt':'cryst';
+    const W=Math.max(15,Math.floor(p.segPts.length/40));
+    const tonset=p.segPts[Math.max(0,p.idx-W)]?.x?.toFixed(2)||'-';
+    const tend=p.segPts[Math.min(p.segPts.length-1,p.idx+W)]?.x?.toFixed(2)||'-';
+    const unit=xAxis==='temp'?'°C':'min';
+    body.innerHTML+=`<tr>
+      <td>${p.segLabel}</td>
+      <td><span class="badge ${badgeCls}">${kind}</span></td>
+      <td>${tonset} ${unit}</td>
+      <td>${p.x.toFixed(2)} ${unit}</td>
+      <td>${tend} ${unit}</td>
+      <td>${dh.toFixed(2)}</td>
+    </tr>`;
+  });
+  document.getElementById('resultsSection').style.display='block';
+}
+
+function exportCSV(){
+  if(!detectedPeaks.length&&!allData.length) return;
+  let csv='セグメント,種別,Tonset,Tpeak,Tend,ΔH_Jg\n';
+  const body=document.getElementById('resultsBody');
+  Array.from(body.querySelectorAll('tr')).forEach(tr=>{
+    const cells=Array.from(tr.querySelectorAll('td')).map(td=>td.textContent.trim());
+    csv+=cells.join(',')+'\n';
+  });
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download='DSC_peaks.csv';
+  a.click();
+}
+</script>
+</body>
+</html>

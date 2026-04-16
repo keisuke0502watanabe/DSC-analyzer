@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DSC Analyzer v3</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0efe9;color:#1a1a1a;min-height:100vh;font-size:14px}
+.header{background:#1a1a1a;color:#fff;padding:.85rem 1.5rem;display:flex;align-items:center;gap:10px}
+.header h1{font-size:15px;font-weight:500;letter-spacing:.02em}
+.ver{font-size:11px;color:#555;background:#2a2a2a;padding:2px 7px;border-radius:4px;border:1px solid #3a3a3a}
+.hsub{font-size:12px;color:#666;margin-left:auto}
+.container{max-width:1300px;margin:0 auto;padding:1.25rem}
+.layout{display:flex;gap:1rem}
+.sidebar{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:.75rem}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:.75rem}
+.panel{background:#fff;border-radius:10px;padding:.9rem 1rem;border:1px solid #e4e4e0}
+.ptitle{font-size:11px;font-weight:500;color:#999;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.65rem;padding-bottom:.45rem;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between}
+
+/* dropzone */
+.dz{border:1.5px dashed #d0d0c8;border-radius:10px;padding:1rem;text-align:center;cursor:pointer;background:#fff;transition:all .18s;margin-bottom:.75rem}
+.dz:hover,.dz.drag{border-color:#378ADD;background:#f0f7ff}
+.dz p{font-size:12px;color:#999;margin-bottom:.6rem}
+input[type=file]{display:none}
+
+/* buttons */
+.btn{font-size:12px;padding:5px 11px;border-radius:6px;border:1px solid #d0d0c8;background:#fff;color:#444;cursor:pointer;transition:all .15s;white-space:nowrap;line-height:1.4}
+.btn:hover{background:#f5f5f2}
+.btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.btn.warn{border-color:#E24B4A;color:#E24B4A}
+.btn.warn:hover{background:#fff0f0}
+.btn.hilite{border-color:#1D9E75;color:#1D9E75;background:#f0fbf7}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:.5rem}
+.lbl{font-size:11px;color:#aaa;margin-bottom:.3rem;margin-top:.5rem}
+
+/* file list */
+.fi{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;border:1px solid #ececea;background:#fafaf8;margin-bottom:4px;cursor:pointer;transition:background .12s}
+.fi:hover{background:#f0f0ec}
+.fi.act{background:#eef6ff;border-color:#b5d4f4}
+.fdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.fname{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fw{font-size:11px;color:#aaa;flex-shrink:0}
+.fdel{font-size:13px;color:#ccc;cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1}
+.fdel:hover{color:#E24B4A}
+
+/* chart */
+.chart-outer{background:#fff;border-radius:10px;border:1px solid #e4e4e0;padding:1rem}
+.cwrap{position:relative;width:100%;height:420px}
+.chart-status{font-size:11px;color:#bbb;text-align:center;padding:.4rem 0}
+
+/* baseline section */
+.bl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:.6rem}
+.blf{display:flex;flex-direction:column;gap:3px}
+.blf label{font-size:11px;color:#aaa}
+.blf input{font-size:12px;padding:4px 7px;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;background:#fff;width:100%}
+.blf input:focus{outline:none;border-color:#378ADD}
+.blf input.hi{border-color:#f59f00;background:#fffbf0}
+.bl-list{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:.4rem}
+.bli{display:flex;align-items:center;gap:5px;font-size:11px;padding:4px 7px;background:#fafaf8;border-radius:5px;border:1px solid #ececea;cursor:pointer}
+.bli:hover{background:#f5f0ff}
+.bli.sel{background:#f0f7ff;border-color:#b5d4f4}
+.blt{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:500;flex-shrink:0}
+.bldel{margin-left:auto;color:#ccc;cursor:pointer;font-size:13px;flex-shrink:0}
+.bldel:hover{color:#E24B4A}
+.step-indicator{display:flex;gap:4px;margin-bottom:.5rem}
+.step{flex:1;text-align:center;font-size:10px;padding:3px;border-radius:4px;border:1px solid #e0e0e0;color:#bbb;transition:all .2s}
+.step.active{background:#fff3cd;border-color:#ffc107;color:#856404;font-weight:500}
+.step.done{background:#d7f5ea;border-color:#1D9E75;color:#0F6E56}
+
+/* seg tags */
+.stag{font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid;cursor:pointer;transition:all .12s;white-space:nowrap}
+.stag.off{opacity:.3}
+.swrap{display:flex;flex-wrap:wrap;gap:4px}
+
+/* metric cards */
+.mc-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mc{background:#fff;border-radius:8px;padding:.6rem .85rem;border:1px solid #e4e4e0}
+.mc .l{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem}
+.mc .v{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* results */
+.rtable-wrap{background:#fff;border-radius:10px;border:1px solid #e4e4e0;overflow:hidden}
+.rhead{padding:.6rem 1rem;border-bottom:1px solid #f0f0f0;font-size:12px;font-weight:500;background:#fafaf8;display:flex;align-items:center;gap:8px}
+table{width:100%;font-size:11.5px;border-collapse:collapse}
+th{padding:6px 10px;text-align:left;color:#aaa;border-bottom:1px solid #f0f0f0;font-weight:400;background:#fafaf8;white-space:nowrap}
+td{padding:5px 10px;border-bottom:1px solid #f7f7f5;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf8}
+.badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;font-weight:500}
+.badge.melt{background:#dbeeff;color:#185FA5}
+.badge.cryst{background:#d7f5ea;color:#0F6E56}
+.note{font-size:11px;color:#bbb;padding:.4rem .9rem}
+
+/* mode badge */
+.mbadge{font-size:10px;padding:2px 7px;border-radius:4px;background:#f5f5f0;color:#aaa;border:1px solid #e8e8e4;transition:all .2s}
+.mbadge.active{background:#fff3cd;color:#856404;border-color:#ffc107}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>DSC Analyzer</h1>
+  <span class="ver">v3</span>
+  <span class="hsub">PerkinElmer Pyris · シグモイドベースライン · オーバーレイ</span>
+</div>
+
+<div class="container">
+<div class="layout">
+
+<!-- ======= SIDEBAR ======= -->
+<div class="sidebar">
+
+  <div>
+    <div class="dz" id="dz">
+      <p>ファイルをドロップ（複数可）<br>または</p>
+      <input type="file" id="fileIn" accept=".txt,.csv" multiple>
+      <button class="btn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">ファイルを選択</button>
+    </div>
+
+    <div class="panel" id="flPanel" style="display:none">
+      <div class="ptitle">ファイル <button class="btn warn" style="font-size:10px;padding:2px 7px" onclick="clearAll()">全消去</button></div>
+      <div id="fileList"></div>
+    </div>
+
+    <div class="panel" id="ctrlPanel" style="display:none">
+      <div class="ptitle">表示</div>
+      <div class="lbl">X軸</div>
+      <div class="btn-row">
+        <button class="btn on" id="btnTemp" onclick="setX('temp')">温度 (°C)</button>
+        <button class="btn" id="btnTime" onclick="setX('time')">時間 (min)</button>
+      </div>
+      <div class="lbl">熱流</div>
+      <div class="btn-row">
+        <button class="btn on" id="btnHF" onclick="setY('hf')">補正後</button>
+        <button class="btn" id="btnUHF" onclick="setY('uhf')">Raw</button>
+      </div>
+      <div class="lbl">解析</div>
+      <div class="btn-row">
+        <button class="btn" id="btnPk" onclick="togglePeaks()">ピーク自動検出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Baseline panel -->
+  <div class="panel" id="blPanel" style="display:none">
+    <div class="ptitle">ベースライン設定 <span class="mbadge" id="mbadge">通常</span></div>
+
+    <!-- click mode step indicator -->
+    <div class="step-indicator" id="stepInd" style="display:none">
+      <div class="step" id="st0">① 低温BL 開始</div>
+      <div class="step" id="st1">② 低温BL 終了</div>
+      <div class="step" id="st2">③ 高温BL 開始</div>
+      <div class="step" id="st3">④ 高温BL 終了</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="btnClick" onclick="toggleClickMode()">グラフクリックで4点指定</button>
+      <button class="btn warn" onclick="clearBL()">全消去</button>
+    </div>
+
+    <div class="lbl">対象ファイル</div>
+    <select id="blFile" style="font-size:12px;padding:4px 7px;border:1px solid #ddd;border-radius:5px;background:#fff;color:#1a1a1a;width:100%;margin-bottom:.5rem"></select>
+
+    <div class="lbl">低温側ベースライン範囲</div>
+    <div class="bl-grid">
+      <div class="blf"><label>開始 T1</label><input type="number" id="bT1" step="0.1" placeholder="°C / min"></div>
+      <div class="blf"><label>終了 T2</label><input type="number" id="bT2" step="0.1" placeholder="°C / min"></div>
+    </div>
+    <div class="lbl">高温側ベースライン範囲</div>
+    <div class="bl-grid">
+      <div class="blf"><label>開始 T3</label><input type="number" id="bT3" step="0.1" placeholder="°C / min"></div>
+      <div class="blf"><label>終了 T4</label><input type="number" id="bT4" step="0.1" placeholder="°C / min"></div>
+    </div>
+    <div class="lbl">BL種類</div>
+    <div class="btn-row" style="margin-bottom:.6rem">
+      <button class="btn on" id="btnSig" onclick="setBlType('sigmoid')">シグモイド</button>
+      <button class="btn" id="btnLin" onclick="setBlType('linear')">直線</button>
+    </div>
+    <button class="btn hilite" style="width:100%;margin-bottom:.4rem" onclick="addBL()">ベースライン追加 →</button>
+
+    <div class="bl-list" id="blList"></div>
+    <div class="note" style="margin-top:.3rem">クリックモード: ①低温BL開始 ②終了 ③高温BL開始 ④終了 の順にクリック</div>
+  </div>
+
+  <div class="panel" id="segPanel" style="display:none">
+    <div class="ptitle">セグメント（アクティブファイル）</div>
+    <div class="swrap" id="segWrap"></div>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- ======= MAIN ======= -->
+<div class="main">
+
+  <div class="mc-row" id="metaRow" style="display:none"></div>
+
+  <div class="chart-outer">
+    <div class="cwrap">
+      <canvas id="cvs" role="img" aria-label="DSC熱流量グラフ"></canvas>
+    </div>
+    <div class="chart-status" id="cstat">ファイルを読み込んでください</div>
+  </div>
+
+  <div class="rtable-wrap" id="rSection" style="display:none">
+    <div class="rhead">解析結果
+      <button class="btn" style="margin-left:auto;font-size:11px" onclick="exportCSV()">CSV出力</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th></th><th>ファイル</th><th>セグメント</th><th>種別</th>
+          <th>Tonset</th><th>Tpeak</th><th>Tend</th>
+          <th>ΔH (J/g)</th><th>BL種</th>
+        </tr></thead>
+        <tbody id="rBody"></tbody>
+      </table>
+    </div>
+    <div class="note">ΔH = ∫(HF − BL) dT / scanRate × 60　|　scanRateはメソッドから自動取得、なければ15 °C/min</div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /container -->
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const FC=['#378ADD','#D85A30','#7F77DD','#1D9E75','#BA7517','#D4537E','#888780','#639922'];
+let files=[], activeId=null, chart=null;
+let xAxis='temp', yCol='hf', showPeaks=false;
+let baselines=[], blType='sigmoid';
+let clickMode=false, clickStep=0, clickVals=[];
+let detPeaks=[], nextFid=1, nextBid=1;
+
+// ─── File I/O ─────────────────────────────────────────────────────────────────
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');[...e.dataTransfer.files].forEach(loadFile)});
+document.getElementById('fileIn').addEventListener('change',e=>{[...e.target.files].forEach(loadFile);e.target.value='';});
+
+function loadFile(f){const r=new FileReader();r.onload=e=>parse(e.target.result,f.name);r.readAsText(f,'UTF-8');}
+
+function parse(txt,fname){
+  const lines=txt.split('\n');
+  const meta={};let ds=-1;
+  // parse scan rate from method steps e.g. "Heat from ... at 15.00°C/min"
+  let scanRate=15;
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/^\s*Time\s+Unsubtracted/i.test(l)){ds=i+2;break;}
+    const kv=l.split('\t');
+    if(kv.length>=2){const k=kv[0].trim().replace(/:$/,'');const v=kv.slice(1).join('\t').trim();if(k&&v)meta[k]=v;}
+    const rm=l.match(/at\s+([\d.]+)\s*[°º]?C\/min/i);
+    if(rm)scanRate=parseFloat(rm[1]);
+  }
+  if(ds<0){alert(fname+': データ列が見つかりません');return;}
+  const rows=[];
+  for(let i=ds;i<lines.length;i++){
+    const c=lines[i].trim().split(/\t/);
+    if(c.length<5)continue;
+    const n=c.map(v=>parseFloat(v.trim()));
+    if(n.slice(0,5).some(isNaN))continue;
+    rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
+  }
+  if(!rows.length){alert(fname+': 数値データなし');return;}
+  const id=nextFid++;
+  const color=FC[(files.length)%FC.length];
+  const weight=parseFloat(meta['Sample Weight']||meta['Display Weight']||'0');
+  const segs=detectSegs(rows);
+  files.push({id,name:fname,data:rows,segments:segs,meta,weight,color,scanRate,visSegs:new Set(segs.map(s=>s.idx))});
+  activeId=id;
+  refreshUI();renderChart();
+}
+
+function detectSegs(rows){
+  const segs=[];let dir=0,ss=0,idx=0;const SM=10;
+  const ld=i=>{const a=Math.max(0,i-SM),b=Math.min(rows.length-1,i+SM);return rows[b].temp-rows[a].temp;};
+  for(let i=SM;i<rows.length-SM;i+=5){
+    const d=ld(i);const nd=Math.abs(d)<0.5?0:(d>0?1:-1);
+    if(nd!==dir&&i-ss>100){
+      if(i-ss>200){
+        const sl=rows.slice(ss,i);
+        const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+        segs.push({idx:idx++,type:tp,start:ss,end:i-1,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp))});
+      }
+      ss=i;dir=nd;
+    }
+  }
+  if(rows.length-ss>200){
+    const sl=rows.slice(ss);const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+    segs.push({idx:idx++,type:tp,start:ss,end:rows.length-1,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp))});
+  }
+  const cnt={heating:0,cooling:0,isothermal:0};
+  segs.forEach(s=>{cnt[s.type]++;s.label=(s.type==='heating'?'加熱':s.type==='cooling'?'冷却':'等温')+cnt[s.type];});
+  return segs;
+}
+
+function clearAll(){files=[];baselines=[];activeId=null;detPeaks=[];refreshUI();renderChart();}
+function getAF(){return files.find(f=>f.id===activeId)||null;}
+function getF(id){return files.find(f=>f.id===id)||null;}
+
+// ─── UI refresh ───────────────────────────────────────────────────────────────
+function refreshUI(){
+  const has=files.length>0;
+  ['flPanel','ctrlPanel','blPanel','segPanel'].forEach(id=>document.getElementById(id).style.display=has?'block':'none');
+  document.getElementById('metaRow').style.display=has?'grid':'none';
+  document.getElementById('cstat').style.display=has?'none':'block';
+
+  // file list
+  const fl=document.getElementById('fileList');fl.innerHTML='';
+  files.forEach(f=>{
+    const d=document.createElement('div');
+    d.className='fi'+(f.id===activeId?' act':'');
+    d.innerHTML=`<span class="fdot" style="background:${f.color}"></span>
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fw">${f.weight?f.weight.toFixed(3)+' mg':''}</span>
+      <span class="fdel" onclick="removeF(${f.id},event)">×</span>`;
+    d.onclick=()=>{activeId=f.id;refreshUI();renderChart();};
+    fl.appendChild(d);
+  });
+
+  // seg labels
+  const af=getAF();const sw=document.getElementById('segWrap');sw.innerHTML='';
+  if(af){
+    af.segments.forEach(s=>{
+      const b=document.createElement('span');
+      const on=af.visSegs.has(s.idx);
+      b.className='stag'+(on?'':' off');
+      b.style.borderColor=af.color;b.style.color=af.color;
+      b.textContent=`${s.label} ${s.tmin.toFixed(0)}→${s.tmax.toFixed(0)}°C`;
+      b.onclick=()=>{if(af.visSegs.has(s.idx))af.visSegs.delete(s.idx);else af.visSegs.add(s.idx);b.classList.toggle('off');renderChart();};
+      sw.appendChild(b);
+    });
+  }
+
+  // meta cards
+  const mr=document.getElementById('metaRow');mr.innerHTML='';
+  if(af){
+    const d=af.data;const tmin=Math.min(...d.map(r=>r.temp)),tmax=Math.max(...d.map(r=>r.temp));
+    [['Sample ID',af.meta['Sample ID']||'-'],['重量',af.weight?af.weight.toFixed(3)+' mg':'-'],
+     ['測定日',af.meta['Data Collected']||'-'],['スキャン速度',af.scanRate+' °C/min'],
+     ['温度範囲',tmin.toFixed(1)+'〜'+tmax.toFixed(1)+' °C'],['点数',d.length.toLocaleString()]
+    ].forEach(([l,v])=>{mr.innerHTML+=`<div class="mc"><div class="l">${l}</div><div class="v">${v}</div></div>`;});
+  }
+
+  // baseline file select
+  const bfs=document.getElementById('blFile');
+  bfs.innerHTML=files.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+  if(af)bfs.value=af.id;
+
+  renderBlList();
+}
+
+function removeF(id,e){
+  e.stopPropagation();
+  files=files.filter(f=>f.id!==id);
+  baselines=baselines.filter(b=>b.fileId!==id);
+  if(activeId===id)activeId=files.length?files[files.length-1].id:null;
+  refreshUI();renderChart();
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+function setX(v){xAxis=v;document.getElementById('btnTemp').classList.toggle('on',v==='temp');document.getElementById('btnTime').classList.toggle('on',v==='time');renderChart();}
+function setY(v){yCol=v;document.getElementById('btnHF').classList.toggle('on',v==='hf');document.getElementById('btnUHF').classList.toggle('on',v==='uhf');renderChart();}
+function togglePeaks(){showPeaks=!showPeaks;document.getElementById('btnPk').classList.toggle('on',showPeaks);renderChart();}
+function setBlType(v){blType=v;document.getElementById('btnSig').classList.toggle('on',v==='sigmoid');document.getElementById('btnLin').classList.toggle('on',v==='linear');}
+
+// ─── Click mode ───────────────────────────────────────────────────────────────
+function toggleClickMode(){
+  clickMode=!clickMode;clickStep=0;clickVals=[];
+  document.getElementById('btnClick').classList.toggle('on',clickMode);
+  document.getElementById('mbadge').textContent=clickMode?'クリックモード':'通常';
+  document.getElementById('mbadge').classList.toggle('active',clickMode);
+  document.getElementById('stepInd').style.display=clickMode?'flex':'none';
+  updateStepUI();
+}
+
+function updateStepUI(){
+  if(!clickMode)return;
+  ['st0','st1','st2','st3'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    el.className='step'+(i<clickStep?' done':i===clickStep?' active':'');
+  });
+  // highlight corresponding input
+  ['bT1','bT2','bT3','bT4'].forEach((id,i)=>{
+    document.getElementById(id).className='blf'+(i===clickStep&&clickMode?' hi':'');
+  });
+}
+
+// ─── Baseline management ──────────────────────────────────────────────────────
+function addBL(){
+  const fileId=parseInt(document.getElementById('blFile').value);
+  const T=[parseFloat(document.getElementById('bT1').value),parseFloat(document.getElementById('bT2').value),
+           parseFloat(document.getElementById('bT3').value),parseFloat(document.getElementById('bT4').value)];
+  if(T.some(isNaN)){alert('4つの温度/時間値をすべて入力してください\nT1 < T2 < T3 < T4 になるように設定');return;}
+  if(!(T[0]<T[1]&&T[1]<T[2]&&T[2]<T[3])){alert('T1 < T2 < T3 < T4 になるように設定してください');return;}
+  const f=getF(fileId);
+  baselines.push({id:nextBid++,fileId,T1:T[0],T2:T[1],T3:T[2],T4:T[3],type:blType,color:f?f.color:'#888'});
+  renderBlList();renderChart();
+}
+
+function clearBL(){baselines=[];renderBlList();renderChart();}
+function removeBL(id){baselines=baselines.filter(b=>b.id!==id);renderBlList();renderChart();}
+
+function renderBlList(){
+  const div=document.getElementById('blList');div.innerHTML='';
+  if(!baselines.length){div.innerHTML='<div style="font-size:11px;color:#ccc;text-align:center;padding:.4rem">なし</div>';return;}
+  baselines.forEach(b=>{
+    const f=getF(b.fileId);
+    const short=f?f.name.replace(/\.[^.]+$/,'').slice(0,10):b.fileId;
+    div.innerHTML+=`<div class="bli">
+      <span class="blt" style="background:${b.color}18;color:${b.color};border:1px solid ${b.color}44">${short}</span>
+      <span style="color:#888">${b.T1.toFixed(1)}…${b.T4.toFixed(1)}</span>
+      <span style="font-size:10px;color:#bbb">${b.type==='sigmoid'?'S字':'直線'}</span>
+      <span class="bldel" onclick="removeBL(${b.id})">×</span>
+    </div>`;
+  });
+}
+
+// ─── Sampling ─────────────────────────────────────────────────────────────────
+function getPts(fobj,seg,step=3){
+  return fobj.data.slice(seg.start,seg.end+1).filter((_,j)=>j%step===0).map(r=>({
+    x:xAxis==='temp'?+r.temp.toFixed(3):+r.time.toFixed(4),
+    y:+(yCol==='hf'?r.hf:r.hf_raw||r.hf).toFixed(5)
+  }));
+}
+
+// ─── Baseline computation ─────────────────────────────────────────────────────
+// allPts: all points of the segment (dense, for interpolation)
+// bl: baseline record {T1,T2,T3,T4,type}
+// Returns array of {x,y} matching pts domain for plotting and integration
+
+function computeBL(pts, bl){
+  const {T1,T2,T3,T4,type}=bl;
+  // get mean y in the two baseline regions
+  const inRange=(pts,a,b)=>pts.filter(p=>p.x>=a&&p.x<=b);
+  const mean=arr=>arr.length?arr.reduce((s,p)=>s+p.y,0)/arr.length:null;
+
+  const loRegion=inRange(pts,T1,T2);
+  const hiRegion=inRange(pts,T3,T4);
+  if(!loRegion.length||!hiRegion.length)return null;
+
+  // fit linear baselines in each region
+  const linFit=pts=>{
+    const n=pts.length;
+    if(n===0)return{a:0,b:0};
+    const mx=pts.reduce((s,p)=>s+p.x,0)/n;
+    const my=pts.reduce((s,p)=>s+p.y,0)/n;
+    const num=pts.reduce((s,p)=>s+(p.x-mx)*(p.y-my),0);
+    const den=pts.reduce((s,p)=>s+(p.x-mx)**2,0)||1;
+    const a=num/den;const b=my-a*mx;
+    return{a,b};
+  };
+  const loFit=linFit(loRegion);
+  const hiFit=linFit(hiRegion);
+
+  // working region: T1 to T4
+  const work=pts.filter(p=>p.x>=T1&&p.x<=T4);
+  if(!work.length)return null;
+
+  if(type==='linear'){
+    // simple linear interpolation between midpoints of BL regions
+    const xL=(T1+T2)/2,xH=(T3+T4)/2;
+    const yL=loFit.a*xL+loFit.b,yH=hiFit.a*xH+hiFit.b;
+    return work.map(p=>{
+      const f=(p.x-xL)/(xH-xL||1);
+      return{x:p.x,y:yL+(yH-yL)*Math.max(0,Math.min(1,f))};
+    });
+  }
+
+  // sigmoid (integral-weighted): weight = cumulative integral of |HF| over peak region
+  // normalized weight w(T) = cumIntegral(T1..T) / cumIntegral(T1..T4)
+  const N=work.length;
+  const cumInt=new Float64Array(N);
+  let acc=0;
+  for(let i=1;i<N;i++){
+    const dx=Math.abs(work[i].x-work[i-1].x);
+    acc+=Math.abs(work[i].y+work[i-1].y)/2*dx;
+    cumInt[i]=acc;
+  }
+  const total=cumInt[N-1]||1;
+
+  return work.map((p,i)=>{
+    const w=cumInt[i]/total; // 0→1 sigmoid weight following the heat flow shape
+    const ylo=loFit.a*p.x+loFit.b;
+    const yhi=hiFit.a*p.x+hiFit.b;
+    return{x:p.x,y:ylo*(1-w)+yhi*w};
+  });
+}
+
+// ─── ΔH integration ───────────────────────────────────────────────────────────
+function calcDH(pts,blPts,scanRate){
+  // blPts is already on same x domain; interpolate baseline at each data point
+  if(!blPts||!blPts.length)return NaN;
+  const blMap=new Map(blPts.map(p=>[p.x.toFixed(3),p.y]));
+  const getbl=x=>{
+    const k=(+x).toFixed(3);
+    if(blMap.has(k))return blMap.get(k);
+    // linear interpolation
+    let lo=blPts[0],hi=blPts[blPts.length-1];
+    for(let i=0;i<blPts.length-1;i++){
+      if(blPts[i].x<=x&&blPts[i+1].x>=x){lo=blPts[i];hi=blPts[i+1];break;}
+    }
+    const f=(x-lo.x)/(hi.x-lo.x||1);
+    return lo.y+(hi.y-lo.y)*f;
+  };
+  let area=0;
+  for(let i=1;i<pts.length;i++){
+    const dx=pts[i].x-pts[i-1].x;
+    if(Math.abs(dx)<1e-9)continue;
+    const h0=pts[i-1].y-getbl(pts[i-1].x);
+    const h1=pts[i].y-getbl(pts[i].x);
+    area+=(h0+h1)/2*dx;
+  }
+  // mW/mg * °C / (°C/min) * 60 s/min = J/g
+  return xAxis==='temp'?(area/scanRate*60):(area*60);
+}
+
+// ─── Peak detection ───────────────────────────────────────────────────────────
+function detectPeaks(pts,segType){
+  const peaks=[];const W=Math.max(12,Math.floor(pts.length/40));
+  for(let i=W;i<pts.length-W;i++){
+    const v=pts[i].y;let isMin=true,isMax=true;
+    for(let j=i-W;j<=i+W;j++){if(j===i)continue;if(pts[j].y<=v)isMin=false;if(pts[j].y>=v)isMax=false;}
+    if((isMin||isMax)&&(!peaks.length||Math.abs(i-peaks[peaks.length-1].idx)>W*1.5))
+      peaks.push({idx:i,x:pts[i].x,y:pts[i].y,type:isMax?'max':'min',segType});
+  }
+  return peaks;
+}
+
+// ─── Chart render ─────────────────────────────────────────────────────────────
+function renderChart(){
+  const datasets=[];detPeaks=[];
+
+  files.forEach(f=>{
+    f.segments.filter(s=>f.visSegs.has(s.idx)).forEach(s=>{
+      const pts=getPts(f,s);
+      const isActive=f.id===activeId;
+      datasets.push({
+        label:`${f.name.replace(/\.[^.]+$/,'')} · ${s.label}`,data:pts,
+        borderColor:isActive?f.color:f.color+'88',borderWidth:isActive?1.8:1.1,
+        pointRadius:0,tension:0.12,fill:false,
+        _meta:{fileId:f.id,segLabel:s.label,segType:s.type,pts,weight:f.weight,scanRate:f.scanRate}
+      });
+
+      // baselines for this segment
+      baselines.filter(b=>b.fileId===f.id).forEach(b=>{
+        const blPts=computeBL(pts,b);
+        if(!blPts)return;
+        datasets.push({
+          label:`BL ${f.name.slice(0,6)} [${b.T1.toFixed(1)}–${b.T4.toFixed(1)}]`,
+          data:blPts,
+          borderColor:f.color,borderWidth:1.2,borderDash:[5,4],
+          pointRadius:0,tension:0,fill:false,showLine:true,
+          _isBL:true
+        });
+        // shade between curve and baseline
+        // (Chart.js fill between datasets is complex; skip for now, drawn via BL line)
+      });
+
+      if(showPeaks&&isActive){
+        detectPeaks(pts,s.type).forEach(p=>{
+          detPeaks.push({...p,fileId:f.id,fileName:f.name,segLabel:s.label,segType:s.type,color:f.color,pts,weight:f.weight,scanRate:f.scanRate});
+        });
+      }
+    });
+  });
+
+  // marker for click mode preview points
+  if(clickMode&&clickVals.length){
+    datasets.push({
+      label:'BL設定点',type:'scatter',
+      data:clickVals.map(v=>({x:v,y:0})),
+      pointBackgroundColor:'#f59f00',pointBorderColor:'#fff',pointBorderWidth:1.5,
+      pointRadius:8,showLine:false,yAxisID:'y'
+    });
+  }
+
+  if(showPeaks&&detPeaks.length){
+    datasets.push({
+      label:'ピーク',type:'scatter',
+      data:detPeaks.map(p=>({x:p.x,y:p.y})),
+      pointBackgroundColor:detPeaks.map(p=>p.color),
+      pointBorderColor:'#fff',pointBorderWidth:1.5,pointRadius:7,showLine:false
+    });
+    renderResults();
+  } else {
+    document.getElementById('rSection').style.display='none';
+  }
+
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById('cvs'),{
+    type:'line',data:{datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:120},
+      onClick:handleClick,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{
+          display:files.length>1||baselines.length>0,position:'top',
+          labels:{boxWidth:20,boxHeight:2,font:{size:11},color:'#aaa',
+            filter:i=>!i.text.startsWith('BL設定点')&&i.text!=='ピーク'&&!i._isBL}
+        },
+        tooltip:{callbacks:{
+          title:items=>xAxis==='temp'?`T = ${(+items[0].parsed.x).toFixed(2)} °C`:`t = ${(+items[0].parsed.x).toFixed(3)} min`,
+          label:item=>item.dataset._isBL||item.dataset.label==='ピーク'||item.dataset.label==='BL設定点'?null:
+            `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`
+        }}
+      },
+      scales:{
+        x:{type:'linear',
+          title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:12},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:11},maxTicksLimit:12}},
+        y:{title:{display:true,text:'熱流 (mW/mg)',font:{size:12},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:11},callback:v=>v.toFixed(3)}}
+      }
+    }
+  });
+}
+
+// ─── Chart click handler ──────────────────────────────────────────────────────
+function handleClick(e){
+  if(!clickMode)return;
+  const els=chart.getElementsAtEventForMode(e,'nearest',{intersect:false},true);
+  if(!els.length)return;
+  const ds=chart.data.datasets[els[0].datasetIndex];
+  if(ds._isBL||ds.label==='ピーク'||ds.label==='BL設定点')return;
+  const xVal=ds.data[els[0].index].x;
+
+  clickVals[clickStep]=xVal;
+  const ids=['bT1','bT2','bT3','bT4'];
+  document.getElementById(ids[clickStep]).value=xVal.toFixed(2);
+  clickStep++;
+
+  if(clickStep>=4){
+    // auto-add
+    clickStep=0;clickVals=[];
+    toggleClickMode();// exit click mode
+    addBL();
+  } else {
+    updateStepUI();
+    renderChart();// show preview dots
+  }
+}
+
+// ─── Results ──────────────────────────────────────────────────────────────────
+function renderResults(){
+  const body=document.getElementById('rBody');body.innerHTML='';
+  detPeaks.forEach(p=>{
+    // find a baseline that covers this peak
+    const bl=baselines.find(b=>b.fileId===p.fileId&&p.x>=b.T1&&p.x<=b.T4);
+    let dh=NaN,blLabel='自動';
+    const allPts=getPts(getF(p.fileId)||files[0],getF(p.fileId)?.segments.find(s=>s.label===p.segLabel)||getF(p.fileId)?.segments[0]||{start:0,end:0});
+    if(bl){
+      const blPts=computeBL(p.pts,bl);
+      dh=blPts?calcDH(p.pts.filter(pt=>pt.x>=bl.T1&&pt.x<=bl.T4),blPts,p.scanRate):NaN;
+      blLabel=bl.type==='sigmoid'?'S字':'直線';
+    } else {
+      // auto: simple linear BL over peak window
+      const W=Math.max(15,Math.floor(p.pts.length/40));
+      const sub=p.pts.slice(Math.max(0,p.idx-W),Math.min(p.pts.length,p.idx+W+1));
+      if(sub.length>2){
+        const x0=sub[0].x,x1=sub[sub.length-1].x,y0=sub[0].y,y1=sub[sub.length-1].y;
+        const autoBL=sub.map(pt=>{const f=(pt.x-x0)/(x1-x0||1);return{x:pt.x,y:y0+(y1-y0)*f};});
+        dh=calcDH(sub,autoBL,p.scanRate);
+      }
+    }
+    const onset=p.pts[Math.max(0,p.idx-Math.max(10,Math.floor(p.pts.length/50)))]?.x||p.x;
+    const tend=p.pts[Math.min(p.pts.length-1,p.idx+Math.max(10,Math.floor(p.pts.length/50)))]?.x||p.x;
+    const kind=p.segType==='heating'?(p.type==='min'?'融解（吸熱）':'結晶化（発熱）'):(p.type==='max'?'結晶化（発熱）':'融解（吸熱）');
+    const bc=kind.startsWith('融解')?'melt':'cryst';
+    const unit=xAxis==='temp'?'°C':'min';
+    body.innerHTML+=`<tr>
+      <td><span style="color:${p.color};font-size:14px">●</span></td>
+      <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${p.fileName.replace(/\.[^.]+$/,'')}</td>
+      <td>${p.segLabel}</td>
+      <td><span class="badge ${bc}">${kind}</span></td>
+      <td>${onset.toFixed(2)} ${unit}</td>
+      <td>${p.x.toFixed(2)} ${unit}</td>
+      <td>${tend.toFixed(2)} ${unit}</td>
+      <td>${isNaN(dh)?'-':Math.abs(dh).toFixed(2)}</td>
+      <td style="color:${bl?'#1D9E75':'#bbb'}">${blLabel}</td>
+    </tr>`;
+  });
+  document.getElementById('rSection').style.display='block';
+}
+
+// ─── CSV export ───────────────────────────────────────────────────────────────
+function exportCSV(){
+  let csv='ファイル,セグメント,種別,Tonset,Tpeak,Tend,ΔH_Jg,BL種\n';
+  document.getElementById('rBody').querySelectorAll('tr').forEach(tr=>{
+    const tds=[...tr.querySelectorAll('td')].slice(1).map(td=>td.textContent.trim());
+    csv+=tds.join(',')+'\n';
+  });
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download='DSC_v3.csv';a.click();
+}
+</script>
+</body>
+</html>
