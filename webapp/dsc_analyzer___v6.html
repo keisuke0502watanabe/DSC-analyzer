@@ -98,6 +98,8 @@ input[type=file]{display:none}
 .chart-pane-wrap{flex:1;min-width:0}
 .chart-pane{position:relative;min-height:430px;background:#fff;border:1px solid #f0f0ee;border-radius:8px;padding:.5rem}
 .chart-pane.thermal{background:#fafaf8}
+.dsc-stack{display:grid;grid-template-rows:1fr 1fr;gap:10px;height:100%;min-height:430px}
+.chart-pane.dsc-small{min-height:210px}
 .chart-tools{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:3}
 .tool-btn{width:30px;height:30px;border:1px solid #d7d7cf;border-radius:7px;background:#fff;color:#666;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
 .tool-btn:hover{background:#f5f5f2}
@@ -138,6 +140,8 @@ tr:hover td{background:#fafaf8}
 .seg-range-table th{font-size:10px;color:#aaa;background:#fafaf8}
 .seg-range-table td input{width:88px;font-size:11px;padding:2px 4px;border:1px solid #e0e0da;border-radius:4px}
 .seg-range-table td input:focus{outline:none;border-color:#378ADD}
+.seg-range-inline{display:flex;gap:6px;align-items:center;margin-left:auto}
+.seg-range-inline input{width:70px;font-size:11px;padding:2px 4px;border:1px solid #e0e0da;border-radius:4px}
 </style>
 </head>
 <body>
@@ -225,8 +229,8 @@ tr:hover td{background:#fafaf8}
     </div>
     <div class="lbl" id="segPosLbl">Segment Table Position</div>
     <div class="btn-row">
-      <button class="btn on" id="btnSegPosLeft" onclick="setSegTablePos('left')">Left of thermal</button>
-      <button class="btn" id="btnSegPosBottom" onclick="setSegTablePos('bottom')">Below thermal</button>
+      <button class="btn" id="btnSegPosLeft" onclick="setSegTablePos('left')">Left of thermal</button>
+      <button class="btn on" id="btnSegPosBottom" onclick="setSegTablePos('bottom')">Below thermal</button>
     </div>
     <div style="font-size:10px;color:#bbb;margin-top:4px">ズーム操作モード時のみ: ホイール(X), Alt+ホイール(Y), 左ドラッグ(範囲ズーム) / Shortcut: Z(ズーム), X(固定), A(All), D(DSC), T(Thermal)</div>
   </div>
@@ -259,16 +263,25 @@ tr:hover td{background:#fafaf8}
       <button class="btn" id="exportCsvBtn" onclick="exportCSV()">Export CSV</button>
     </div>
     <div class="cwrap layout-row" id="chartWrap" style="padding:1rem">
-      <div class="thermal-zone table-left" id="thermalZone">
-        <div class="seg-range-wrap left" id="segRangeWrap">
+      <div class="thermal-zone table-bottom" id="thermalZone">
+        <div class="seg-range-wrap bottom" id="segRangeWrap">
           <div class="seg-range-head">
             <span id="segRangeTitle">Segment Range (Time min)</span>
-            <button class="btn" id="applyAllSegBtn" style="font-size:10px;padding:1px 6px;margin-left:auto" onclick="applyAllSegRangeFromTable()">Apply all</button>
+            <div class="seg-range-inline">
+              <span id="offsetEvenLbl" style="font-size:10px;color:#999">Offset Even:</span>
+              <input type="number" id="evenOffStart" step="0.05" value="0" title="Start offset">
+              <input type="number" id="evenOffStep" step="0.05" value="0.1" title="Step">
+              <button class="btn" id="applyEvenOffBtn" style="font-size:10px;padding:1px 6px" onclick="applyEvenOffsetFromTable()">Apply</button>
+              <button class="btn" id="applyAllSegBtn" style="font-size:10px;padding:1px 6px" onclick="applyAllSegRangeFromTable()">Apply all</button>
+            </div>
           </div>
           <div class="seg-range-table-box">
             <table class="seg-range-table">
               <thead>
-                <tr><th>Step</th><th id="segStartHead">Start</th><th id="segEndHead">End</th><th></th></tr>
+                <tr>
+                  <th>Step</th><th id="segStartHead">Start</th><th id="segEndHead">End</th>
+                  <th id="segOffsetHead">Offset</th><th id="segGainHead">Gain</th><th></th>
+                </tr>
               </thead>
               <tbody id="segRangeBody"></tbody>
             </table>
@@ -290,18 +303,24 @@ tr:hover td{background:#fafaf8}
           </div>
         </div>
       </div>
-      <div class="chart-pane">
-        <div class="chart-label">DSC</div>
-        <div class="chart-tools">
-          <button class="tool-btn on" id="dscModeBtn" title="ズーム操作" onclick="toggleGraphMode('dsc')">🔍</button>
-          <button class="tool-btn" title="全体表示に戻す" onclick="allScale('dsc')">⤢</button>
-          <button class="tool-btn" title="X拡大" onclick="zoomByButton('dsc','x',0.85)">＋</button>
-          <button class="tool-btn" title="X縮小" onclick="zoomByButton('dsc','x',1.18)">－</button>
-          <button class="tool-btn" title="Y拡大" onclick="zoomByButton('dsc','y',0.85)">↕＋</button>
-          <button class="tool-btn" title="Y縮小" onclick="zoomByButton('dsc','y',1.18)">↕－</button>
+      <div class="dsc-stack">
+        <div class="chart-pane dsc-small">
+          <div class="chart-label" id="dscRawLabel">DSC (no offset)</div>
+          <canvas id="cvsRaw" role="img" aria-label="DSC original curve"></canvas>
         </div>
-        <div class="zoom-box" id="dscZoomBox"></div>
-        <canvas id="cvs" role="img" aria-label="DSC熱流量グラフ"></canvas>
+        <div class="chart-pane dsc-small">
+          <div class="chart-label" id="dscAdjLabel">DSC (offset/gain applied)</div>
+          <div class="chart-tools">
+            <button class="tool-btn on" id="dscModeBtn" title="ズーム操作" onclick="toggleGraphMode('dsc')">🔍</button>
+            <button class="tool-btn" title="全体表示に戻す" onclick="allScale('dsc')">⤢</button>
+            <button class="tool-btn" title="X拡大" onclick="zoomByButton('dsc','x',0.85)">＋</button>
+            <button class="tool-btn" title="X縮小" onclick="zoomByButton('dsc','x',1.18)">－</button>
+            <button class="tool-btn" title="Y拡大" onclick="zoomByButton('dsc','y',0.85)">↕＋</button>
+            <button class="tool-btn" title="Y縮小" onclick="zoomByButton('dsc','y',1.18)">↕－</button>
+          </div>
+          <div class="zoom-box" id="dscZoomBox"></div>
+          <canvas id="cvs" role="img" aria-label="DSC corrected curve"></canvas>
+        </div>
       </div>
     </div>
     <div class="cfoot" id="cfoot">Please load files</div>
@@ -340,7 +359,7 @@ const STYPE_LABEL_EN={heating:'Heating',cooling:'Cooling',isothermal:'Isothermal
 let files=[];        // file objects
 let activeId=null;
 let xAxis='temp', yCol='hf', showPeaks=false;
-let chart=null, thermalChart=null;
+let chart=null, chartRaw=null, thermalChart=null;
 let clickMode=false, clickStep=0, clickSegId=null;
 let nextFid=1;
 let analysisResults=[];
@@ -352,7 +371,7 @@ let lastDscBounds={xMin:0,xMax:1,yMin:0,yMax:1};
 let lastThermalBounds={xMin:0,xMax:1,yMin:0,yMax:1};
 let graphLayout='row'; // row|col
 let graphRatio=35; // thermal share (%)
-let segTablePos='left'; // left|bottom
+let segTablePos='bottom'; // left|bottom
 let uiLang='en';
 const I18N={
   en:{
@@ -899,6 +918,8 @@ function renderSegRangeTable(){
       <td>${s.num}</td>
       <td><input type="number" id="trTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></td>
       <td><input type="number" id="trTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></td>
+      <td><input type="number" id="trOff-${s.idx}" value="${Number.isFinite(s.dOffset)?s.dOffset:0}" step="0.05" oninput="setSegOffset(${s.idx},this.value,false)"></td>
+      <td><input type="number" id="trGain-${s.idx}" value="${Number.isFinite(s.yGain)?s.yGain:1}" step="0.05" min="0.05" oninput="setSegGain(${s.idx},this.value,false)"></td>
       <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">${uiLang==='en'?'Apply':'適用'}</button></td>`;
     body.appendChild(tr);
   });
@@ -925,6 +946,8 @@ function applyAllSegRangeFromTable(){
   for(const s of af.segments){
     const tStart=parseFloat(document.getElementById(`trTs-${s.idx}`)?.value);
     const tEnd=parseFloat(document.getElementById(`trTe-${s.idx}`)?.value);
+    const dOff=parseFloat(document.getElementById(`trOff-${s.idx}`)?.value);
+    const dGain=parseFloat(document.getElementById(`trGain-${s.idx}`)?.value);
     if(isNaN(tStart)||isNaN(tEnd))continue;
     if(!(tStart<tEnd))continue;
     if(tStart<minTime||tEnd>maxTime)continue;
@@ -940,6 +963,8 @@ function applyAllSegRangeFromTable(){
       s.tEnd=af.data[endIdx].time;
       s.tmin=Math.min(...slice.map(r=>r.temp));
       s.tmax=Math.max(...slice.map(r=>r.temp));
+      s.dOffset=isNaN(dOff)?0:dOff;
+      s.yGain=(isNaN(dGain)||dGain<=0)?1:dGain;
       okCount++;
     }
   }
@@ -953,20 +978,46 @@ function applyAllSegRangeFromTable(){
   renderChart();
 }
 
-function setSegOffset(idx,v){
+function setSegOffset(idx,v,syncTable=true){
   const af=getAF();if(!af)return;
   const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
   const n=parseFloat(v);
   s.dOffset=isNaN(n)?0:n;
+  if(syncTable){
+    const tableInput=document.getElementById(`trOff-${idx}`);
+    if(tableInput)tableInput.value=String(s.dOffset);
+  }
   renderChart();
 }
 
-function setSegGain(idx,v){
+function setSegGain(idx,v,syncTable=true){
   const af=getAF();if(!af)return;
   const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
   const n=parseFloat(v);
-  if(isNaN(n)||n<=0){s.yGain=1;renderChart();return;}
+  if(isNaN(n)||n<=0){s.yGain=1;
+    if(syncTable){
+      const tableInput=document.getElementById(`trGain-${idx}`);
+      if(tableInput)tableInput.value='1';
+    }
+    renderChart();return;}
   s.yGain=n;
+  if(syncTable){
+    const tableInput=document.getElementById(`trGain-${idx}`);
+    if(tableInput)tableInput.value=String(s.yGain);
+  }
+  renderChart();
+}
+
+function applyEvenOffsetFromTable(){
+  const af=getAF();if(!af)return;
+  const base=parseFloat(document.getElementById('evenOffStart')?.value);
+  const step=parseFloat(document.getElementById('evenOffStep')?.value);
+  const start=isNaN(base)?0:base;
+  const pitch=isNaN(step)?0:step;
+  af.segments.forEach((s,i)=>{
+    s.dOffset=+(start+pitch*i).toFixed(5);
+  });
+  renderSegRangeTable();
   renderChart();
 }
 
@@ -1200,8 +1251,14 @@ function applyLanguage(){
   set('exportCsvBtn','Export CSV','CSV出力');
   set('segRangeTitle','Segment Range (Time min)','セグメント範囲（時間 min）');
   set('applyAllSegBtn','Apply all','一括適用');
+  set('offsetEvenLbl','Offset Even:','Offset等間隔:');
+  set('applyEvenOffBtn','Apply','適用');
   set('segStartHead','Start','開始');
   set('segEndHead','End','終了');
+  set('segOffsetHead','Offset','オフセット');
+  set('segGainHead','Gain','倍率');
+  set('dscRawLabel','DSC (no offset)','DSC（オフセットなし）');
+  set('dscAdjLabel','DSC (offset/gain applied)','DSC（オフセット/倍率適用）');
   set('cfoot','Please load files','ファイルを読み込んでください');
   set('resultsTitle','Results','解析結果');
   set('resultFileHead','File','ファイル');
@@ -1492,7 +1549,9 @@ function shortDesc(s){
 // ─── Chart render ─────────────────────────────────────────────────────────────
 function renderChart(){
   const datasets=[];
+  const rawDatasets=[];
   const allPeakPts=[];
+  const allPeakPtsRaw=[];
   const thermalDatasets=[];
   const dscBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
   const thermalBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
@@ -1527,9 +1586,13 @@ function renderChart(){
       const lw=isActive?1.8:1.1;
       const isSelectedSeg=isActive&&f.selectedSegIdx===s.idx;
       const offsetPts=pts.map(p=>({x:p.x,y:+(p.y*segGain+segOffset).toFixed(5)}));
-      offsetPts.forEach(p=>{
+      pts.forEach(p=>{
         if(p.x<dscBounds.xMin)dscBounds.xMin=p.x;
         if(p.x>dscBounds.xMax)dscBounds.xMax=p.x;
+        if(p.y<dscBounds.yMin)dscBounds.yMin=p.y;
+        if(p.y>dscBounds.yMax)dscBounds.yMax=p.y;
+      });
+      offsetPts.forEach(p=>{
         if(p.y<dscBounds.yMin)dscBounds.yMin=p.y;
         if(p.y>dscBounds.yMax)dscBounds.yMax=p.y;
       });
@@ -1537,6 +1600,13 @@ function renderChart(){
       datasets.push({
         label:`Step${s.num} ${f.name.replace(/\.[^.]+$/,'')}`,
         data:offsetPts,borderColor:isSelectedSeg?color:baseColor,
+        borderWidth:isSelectedSeg?2.2:lw,
+        pointRadius:0,tension:0.12,fill:false,
+        _meta:{fileId:f.id,segIdx:s.idx}
+      });
+      rawDatasets.push({
+        label:`Step${s.num} ${f.name.replace(/\.[^.]+$/,'')}`,
+        data:pts,borderColor:isSelectedSeg?color:baseColor,
         borderWidth:isSelectedSeg?2.2:lw,
         pointRadius:0,tension:0.12,fill:false,
         _meta:{fileId:f.id,segIdx:s.idx}
@@ -1552,6 +1622,11 @@ function renderChart(){
             borderColor:color,borderWidth:1.3,borderDash:[5,4],
             pointRadius:0,tension:0,fill:false,_isBL:true
           });
+          rawDatasets.push({
+            label:`BL Step${s.num}`,data:blPts,
+            borderColor:color,borderWidth:1.3,borderDash:[5,4],
+            pointRadius:0,tension:0,fill:false,_isBL:true
+          });
         }
       }
 
@@ -1559,6 +1634,7 @@ function renderChart(){
       if(showPeaks&&isActive){
         detectPeaks(pts).forEach(pk=>{
           allPeakPts.push({x:pk.x,y:+(pk.y*segGain+segOffset).toFixed(5),color});
+          allPeakPtsRaw.push({x:pk.x,y:+pk.y.toFixed(5),color});
         });
       }
     });
@@ -1589,6 +1665,11 @@ function renderChart(){
     }
   }
 
+  if(allPeakPtsRaw.length)rawDatasets.push({
+    label:'ピーク',type:'scatter',data:allPeakPtsRaw,
+    pointBackgroundColor:allPeakPtsRaw.map(p=>p.color),
+    pointBorderColor:'#fff',pointBorderWidth:1.5,pointRadius:7,showLine:false,_isPeak:true
+  });
   if(allPeakPts.length)datasets.push({
     label:'ピーク',type:'scatter',data:allPeakPts,
     pointBackgroundColor:allPeakPts.map(p=>p.color),
@@ -1596,6 +1677,7 @@ function renderChart(){
   });
 
   if(chart)chart.destroy();
+  if(chartRaw)chartRaw.destroy();
   if(thermalChart)thermalChart.destroy();
   if(!isFinite(dscBounds.xMin)){dscBounds.xMin=0;dscBounds.xMax=1;dscBounds.yMin=0;dscBounds.yMax=1;}
   if(!isFinite(thermalBounds.xMin)){thermalBounds.xMin=0;thermalBounds.xMax=1;thermalBounds.yMin=0;thermalBounds.yMax=1;}
@@ -1657,6 +1739,30 @@ function renderChart(){
         y:{min:dscView.yMin??undefined,max:dscView.yMax??undefined,
           title:{display:true,text:'熱流 (mW/mg)',font:{size:12},color:'#aaa'},
           grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:11},callback:v=>v.toFixed(3)}}
+      }
+    }
+  });
+  chartRaw=new Chart(document.getElementById('cvsRaw'),{
+    type:'line',data:{datasets:rawDatasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:100},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:items=>xAxis==='temp'?`T = ${(+items[0].parsed.x).toFixed(2)} °C`:`t = ${(+items[0].parsed.x).toFixed(3)} min`,
+          label:item=>item.dataset._isBL||item.dataset._isPeak?null:
+            `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`
+        }}
+      },
+      scales:{
+        x:{type:'linear',
+          min:dscView.xMin??undefined,max:dscView.xMax??undefined,
+          title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},maxTicksLimit:12}},
+        y:{min:dscView.yMin??undefined,max:dscView.yMax??undefined,
+          title:{display:true,text:'熱流 (mW/mg)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},callback:v=>v.toFixed(3)}}
       }
     }
   });
