@@ -242,6 +242,7 @@ tr:hover td{background:#fafaf8}
   <div class="panel" id="segPanel" style="display:none">
     <div class="ptitle"><span id="segmentTitle">Method Steps (Segments)</span>
       <span class="badge" id="segHint">Click to expand -> baseline -> run analysis</span>
+      <button class="btn" id="addSegBtn" style="font-size:10px;padding:1px 7px;margin-left:auto" onclick="addSegmentByPrompt()">+ Add</button>
     </div>
     <div style="font-size:11px;color:#bbb;margin-bottom:.6rem;padding:.4rem .5rem;background:#fafaf8;border-radius:6px;border:1px solid #f0f0ee">
       Click each step, set baseline points (T1-T4), apply baseline, then run analysis.
@@ -365,7 +366,13 @@ const I18N={
     enterT1T4:'Please enter all T1 to T4',
     validTOrder:'Please ensure T1 < T2 < T3 < T4',
     minLessThanMax:'Please set min < max',
-    runAnalysisFirst:'Run analysis first'
+    runAnalysisFirst:'Run analysis first',
+    deleteSegment:'Delete',
+    addSegment:'Add segment',
+    addSegPromptStart:'Start time (min):',
+    addSegPromptEnd:'End time (min):',
+    cannotDeleteLastSeg:'At least one segment must remain',
+    segRangeHeaderToggle:'Show/hide segment in chart'
   },
   ja:{
     dataColsNotFound:'データ列が見つかりません',
@@ -378,7 +385,13 @@ const I18N={
     enterT1T4:'T1〜T4をすべて入力してください',
     validTOrder:'T1 < T2 < T3 < T4 になるよう設定してください',
     minLessThanMax:'最小値 < 最大値 で入力してください',
-    runAnalysisFirst:'先に「解析実行」してください'
+    runAnalysisFirst:'先に「解析実行」してください',
+    deleteSegment:'削除',
+    addSegment:'セグメント追加',
+    addSegPromptStart:'開始時間 (min):',
+    addSegPromptEnd:'終了時間 (min):',
+    cannotDeleteLastSeg:'少なくとも1つのセグメントが必要です',
+    segRangeHeaderToggle:'グラフ表示/非表示'
   }
 };
 function t(key,vars={}){
@@ -459,76 +472,72 @@ function parse(txt,fname){
 function assignSegments(rows,methodSteps){
   if(!methodSteps.length) return autoSegments(rows);
 
-  // Strategy: walk rows, assign segment index based on expected temperature trajectory
-  // Each step has a predicted temperature range; we find breakpoints in time
-  const totalTime=rows[rows.length-1].time;
   const N=rows.length;
   const segments=[];
-  let cursor=0; // current row index
+  const time0=rows[0].time;
+  const time1=rows[N-1].time;
+  const measuredTotal=Math.max(1e-6,time1-time0);
 
+  // Thermal program based duration:
+  // - Heat/Cool: |Tstart-Tend| / scanRate
+  // - Hold: duration(min) as-is
+  const rawDur=methodSteps.map(st=>{
+    if(st.type==='isothermal')return Math.max(0,st.duration||0);
+    if(!isFinite(st.rate)||st.rate<=0)return 0;
+    if(!isFinite(st.fromT)||!isFinite(st.toT))return 0;
+    return Math.max(0,Math.abs(st.toT-st.fromT)/st.rate);
+  });
+  let predTotal=rawDur.reduce((a,b)=>a+b,0);
+  if(!isFinite(predTotal)||predTotal<=0) predTotal=measuredTotal;
+
+  // Scale program durations to measured total time to absorb instrument lag / offset.
+  const scale=measuredTotal/predTotal;
+  const scaledDur=rawDur.map(d=>Math.max(0,d*scale));
+  const cumEnds=[];
+  let acc=0;
+  scaledDur.forEach(d=>{acc+=d;cumEnds.push(acc);});
+
+  let cursor=0;
   methodSteps.forEach((step,si)=>{
-    if(cursor>=N) return;
-
-    // Predict duration of this step
-    let predDur;
-    if(step.type==='isothermal'){
-      predDur=step.duration||5;
-    } else {
-      predDur=Math.abs(step.toT-step.fromT)/step.rate;
+    if(cursor>=N-1)return;
+    let endIdx;
+    if(si===methodSteps.length-1){
+      endIdx=N-1;
+    }else{
+      const expectedAbs=time0+cumEnds[si];
+      endIdx=nearestTimeIndex(rows,expectedAbs);
+      // Ensure monotonic / minimum segment length.
+      endIdx=Math.max(cursor+5,Math.min(endIdx,N-2));
     }
-
-    // Find end of this segment by time, with ±15% tolerance for thermal lag
-    const startTime=rows[cursor].time;
-    const expectedEndTime=startTime+predDur;
-    const tolerance=Math.max(predDur*0.15, 0.3);
-
-    let endCursor=cursor;
-    for(let i=cursor;i<N;i++){
-      if(rows[i].time<=expectedEndTime+tolerance){endCursor=i;}
-      else break;
-    }
-    // For scan steps also detect temperature reversal within a lookahead window
-    if(step.type!=='isothermal'&&endCursor<N-1){
-      const dir=step.type==='heating'?1:-1;
-      const lookahead=Math.min(endCursor+200,N-1);
-      for(let i=cursor+20;i<lookahead;i++){
-        const dT=rows[Math.min(i+5,N-1)].temp-rows[Math.max(i-5,0)].temp;
-        if(dir===1&&dT<-0.8){endCursor=Math.min(i+5,N-1);break;}
-        if(dir===-1&&dT>0.8){endCursor=Math.min(i+5,N-1);break;}
-      }
-    }
-    if(endCursor<=cursor) endCursor=Math.min(cursor+200,N-1);
-
-    const slice=rows.slice(cursor,endCursor+1);
+    if(endIdx<=cursor)endIdx=Math.min(cursor+10,N-1);
+    const slice=rows.slice(cursor,endIdx+1);
     segments.push({
       ...step,
       idx:si,
       start:cursor,
-      end:endCursor,
+      end:endIdx,
       tmin:Math.min(...slice.map(r=>r.temp)),
       tmax:Math.max(...slice.map(r=>r.temp)),
       tStart:rows[cursor].time,
-      tEnd:rows[endCursor].time,
-      // BL settings
-      bl:null,  // {T1,T2,T3,T4,type:'sigmoid'|'linear'} or null
+      tEnd:rows[endIdx].time,
+      bl:null,
       visible:true,
       analyze:true,
       dOffset:0,
       yGain:1,
     });
-    cursor=endCursor+1;
+    cursor=endIdx+1;
   });
 
-  // if there are leftover rows not covered, add as extra segment
-  if(cursor<N-50){
-    const slice=rows.slice(cursor);
-    segments.push({
-      num:segments.length+1,type:'unknown',idx:segments.length,
-      start:cursor,end:N-1,rate:0,duration:null,fromT:null,toT:null,
-      tmin:Math.min(...slice.map(r=>r.temp)),tmax:Math.max(...slice.map(r=>r.temp)),
-      tStart:rows[cursor].time,tEnd:rows[N-1].time,
-      bl:null,visible:true,analyze:false,dOffset:0,yGain:1,
-    });
+  if(!segments.length)return autoSegments(rows);
+  // absorb any trailing points into last segment
+  const last=segments[segments.length-1];
+  if(last.end<N-1){
+    last.end=N-1;
+    const slice=rows.slice(last.start,last.end+1);
+    last.tmin=Math.min(...slice.map(r=>r.temp));
+    last.tmax=Math.max(...slice.map(r=>r.temp));
+    last.tEnd=rows[last.end].time;
   }
   return segments;
 }
@@ -645,7 +654,8 @@ function renderSegList(){
         <span class="seg-num" style="background:${color}">${s.num}</span>
         <span class="seg-desc">${desc}${blInfo}</span>
         ${analyzeState}
-        <span class="seg-vis ${s.visible?'':'hidden'}" title="グラフ表示/非表示" onclick="toggleVis(${s.idx},event)">${s.visible?'👁':'◌'}</span>
+        <button class="btn warn" style="font-size:10px;padding:1px 6px" onclick="deleteSegment(${s.idx},event)">${t('deleteSegment')}</button>
+        <span class="seg-vis ${s.visible?'':'hidden'}" title="${t('segRangeHeaderToggle')}" onclick="toggleVis(${s.idx},event)">${s.visible?'👁':'◌'}</span>
       </div>
       <div class="seg-body" id="seg-body-${s.idx}">
         ${renderSegBody(s,af)}
@@ -754,6 +764,93 @@ function nearestTimeIndex(rows,t){
   return Math.abs(rows[lo].time-t)<=Math.abs(rows[hi].time-t)?lo:hi;
 }
 
+function recalcSegmentMeta(af,s){
+  const st=Math.max(0,Math.min(af.data.length-2,s.start));
+  const ed=Math.max(st+1,Math.min(af.data.length-1,s.end));
+  const slice=af.data.slice(st,ed+1);
+  s.start=st;
+  s.end=ed;
+  s.tStart=af.data[st].time;
+  s.tEnd=af.data[ed].time;
+  s.tmin=Math.min(...slice.map(r=>r.temp));
+  s.tmax=Math.max(...slice.map(r=>r.temp));
+}
+
+function normalizeSegments(af){
+  af.segments.sort((a,b)=>a.start-b.start);
+  af.segments.forEach((s,i)=>{
+    s.idx=i;
+    s.num=i+1;
+  });
+  if(af.selectedSegIdx!==null){
+    const exists=af.segments.some(s=>s.idx===af.selectedSegIdx);
+    if(!exists)af.selectedSegIdx=af.segments.length?af.segments[0].idx:null;
+  }
+}
+
+function inferSegmentType(af,startIdx,endIdx){
+  const span=Math.max(10,Math.floor((endIdx-startIdx)/12));
+  const dT=af.data[Math.min(af.data.length-1,endIdx)].temp-af.data[Math.max(0,startIdx)].temp;
+  const dt=af.data[Math.min(af.data.length-1,startIdx+span)].temp-af.data[Math.max(0,startIdx)].temp;
+  if(Math.abs(dT)<0.9&&Math.abs(dt)<0.25)return 'isothermal';
+  return dT>=0?'heating':'cooling';
+}
+
+function addSegmentByPrompt(){
+  const af=getAF();if(!af)return;
+  const t0=af.data[0].time, t1=af.data[af.data.length-1].time;
+  const startDefault=((t0*3+t1)/4).toFixed(3);
+  const endDefault=((t0+t1*3)/4).toFixed(3);
+  const sIn=prompt(`${t('addSegPromptStart')} [${t0.toFixed(3)} - ${t1.toFixed(3)}]`,startDefault);
+  if(sIn===null)return;
+  const eIn=prompt(`${t('addSegPromptEnd')} [${t0.toFixed(3)} - ${t1.toFixed(3)}]`,endDefault);
+  if(eIn===null)return;
+  const tStart=parseFloat(sIn), tEnd=parseFloat(eIn);
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  if(tStart>=tEnd){alert(t('startLessThanEnd'));return;}
+  if(tStart<t0||tEnd>t1){alert(t('timeRange',{min:t0.toFixed(3),max:t1.toFixed(3)}));return;}
+  const startIdx=nearestTimeIndex(af.data,tStart);
+  const endIdx=nearestTimeIndex(af.data,tEnd);
+  if(startIdx<0||endIdx<=startIdx){alert(t('invalidRange'));return;}
+  const tp=inferSegmentType(af,startIdx,endIdx);
+  const rate=tp==='isothermal'?0:Math.abs((af.data[endIdx].temp-af.data[startIdx].temp)/Math.max(1e-6,(af.data[endIdx].time-af.data[startIdx].time)));
+  const seg={
+    num:af.segments.length+1,
+    type:tp,
+    idx:af.segments.length,
+    start:startIdx,
+    end:endIdx,
+    rate:+rate.toFixed(2),
+    duration:tp==='isothermal'?(af.data[endIdx].time-af.data[startIdx].time):null,
+    fromT:af.data[startIdx].temp,
+    toT:af.data[endIdx].temp,
+    bl:null,visible:true,analyze:true,dOffset:0,yGain:1
+  };
+  recalcSegmentMeta(af,seg);
+  af.segments.push(seg);
+  normalizeSegments(af);
+  af.selectedSegIdx=seg.idx;
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function deleteSegment(idx,e){
+  if(e)e.stopPropagation();
+  const af=getAF();if(!af)return;
+  if(af.segments.length<=1){alert(t('cannotDeleteLastSeg'));return;}
+  const pos=af.segments.findIndex(s=>s.idx===idx);
+  if(pos<0)return;
+  af.segments.splice(pos,1);
+  if(clickSegId===idx){clickMode=false;clickStep=0;clickSegId=null;}
+  normalizeSegments(af);
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
 function applySegRange(idx){
   const af=getAF();if(!af)return;
   const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
@@ -783,6 +880,7 @@ function applySegRange(idx){
   s.tEnd=af.data[endIdx].time;
   s.tmin=Math.min(...slice.map(r=>r.temp));
   s.tmax=Math.max(...slice.map(r=>r.temp));
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
 
   renderSegList();
   renderSegRangeTable();
@@ -801,7 +899,7 @@ function renderSegRangeTable(){
       <td>${s.num}</td>
       <td><input type="number" id="trTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></td>
       <td><input type="number" id="trTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></td>
-      <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">適用</button></td>`;
+      <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">${uiLang==='en'?'Apply':'適用'}</button></td>`;
     body.appendChild(tr);
   });
 }
@@ -849,6 +947,7 @@ function applyAllSegRangeFromTable(){
     alert(t('noValidRange'));
     return;
   }
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
   renderSegList();
   renderSegRangeTable();
   renderChart();
@@ -1093,6 +1192,7 @@ function applyLanguage(){
   set('btnSegPosLeft','Left of thermal','熱履歴の左');
   set('btnSegPosBottom','Below thermal','熱履歴の下');
   set('segmentTitle','Method Steps (Segments)','メソッドステップ（セグメント）');
+  set('addSegBtn','+ Add','+ 追加');
   set('segHint','Click to expand -> baseline -> run analysis','クリックで展開 → BL設定 → 解析実行');
   set('analysisOptLbl','Analysis options:','解析オプション：');
   set('btnPk','Auto peak detect','ピーク自動検出');
