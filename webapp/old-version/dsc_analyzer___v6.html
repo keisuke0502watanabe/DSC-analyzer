@@ -1,0 +1,1991 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DSC Analyzer v6</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0efe9;color:#1a1a1a;min-height:100vh;font-size:13px}
+.header{background:#1a1a1a;color:#fff;padding:.8rem 1.5rem;display:flex;align-items:center;gap:10px}
+.header h1{font-size:15px;font-weight:500}
+.ver{font-size:10px;color:#555;background:#2a2a2a;padding:2px 6px;border-radius:3px;border:1px solid #3a3a3a}
+.hsub{font-size:11px;color:#666;margin-left:auto}
+.wrap{max-width:1320px;margin:0 auto;padding:1rem}
+.layout{display:flex;gap:1rem;align-items:flex-start}
+.sidebar{width:280px;flex-shrink:0}
+.main{flex:1;min-width:0}
+
+/* common panel */
+.panel{background:#fff;border-radius:10px;padding:.85rem 1rem;border:1px solid #e4e4e0;margin-bottom:.75rem}
+.ptitle{font-size:11px;font-weight:500;color:#999;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid #f0f0ee;display:flex;align-items:center;gap:6px}
+.ptitle .badge{font-size:10px;padding:1px 6px;border-radius:3px;background:#f0f0ee;color:#aaa;font-weight:400;text-transform:none;letter-spacing:0}
+
+/* dropzone */
+.dz{border:1.5px dashed #d0d0c8;border-radius:10px;padding:1rem;text-align:center;background:#fff;transition:all .18s;margin-bottom:.75rem;cursor:pointer}
+.dz:hover,.dz.drag{border-color:#378ADD;background:#f0f7ff}
+.dz p{font-size:12px;color:#aaa;margin-bottom:.6rem}
+input[type=file]{display:none}
+
+/* buttons */
+.btn{font-size:12px;padding:4px 11px;border-radius:6px;border:1px solid #d4d4cc;background:#fff;color:#444;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn:hover{background:#f5f5f2}
+.btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.btn.accent{background:#185FA5;color:#fff;border-color:#185FA5}
+.btn.accent:hover{background:#0c447c}
+.btn.green{background:#0F6E56;color:#fff;border-color:#0F6E56}
+.btn.green:hover{background:#085041}
+.btn.warn{border-color:#E24B4A;color:#E24B4A}
+.btn.warn:hover{background:#fff0f0}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:.5rem}
+.lbl{font-size:11px;color:#aaa;margin-bottom:.25rem;margin-top:.45rem}
+
+/* file list */
+.fi{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;border:1px solid #ececea;background:#fafaf8;margin-bottom:4px;cursor:pointer;transition:all .12s}
+.fi:hover{background:#f0f0ec}
+.fi.act{background:#eef6ff;border-color:#b5d4f4}
+.fdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.fname{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fw{font-size:10px;color:#bbb;flex-shrink:0}
+.fdel{font-size:13px;color:#ccc;cursor:pointer;padding:0 2px;flex-shrink:0}
+.fdel:hover{color:#E24B4A}
+
+/* segment list — the core UI */
+.seg-list{display:flex;flex-direction:column;gap:4px}
+.seg-item{border:1px solid #ececea;border-radius:8px;overflow:hidden;transition:border-color .14s}
+.seg-item.selected{border-color:#378ADD;box-shadow:0 0 0 2px #378ADD22}
+.seg-header{display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:pointer;background:#fafaf8;transition:background .12s;user-select:none}
+.seg-header:hover{background:#f2f2ef}
+.seg-num{font-size:10px;font-weight:500;padding:1px 6px;border-radius:3px;color:#fff;flex-shrink:0}
+.seg-desc{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seg-type-icon{font-size:10px;flex-shrink:0;color:#bbb}
+.seg-vis{font-size:11px;color:#ccc;cursor:pointer;flex-shrink:0;padding:0 2px}
+.seg-vis:hover{color:#888}
+.seg-vis.hidden{opacity:.4}
+.seg-body{padding:8px 10px;border-top:1px solid #f0f0ee;background:#fff;display:none}
+.seg-item.selected .seg-body{display:block}
+.seg-stats{display:flex;gap:12px;margin-bottom:.5rem}
+.seg-stat{font-size:11px;color:#aaa}
+.seg-stat span{color:#555;font-weight:500}
+
+/* BL config inside segment */
+.bl-cfg{background:#fafaf8;border-radius:6px;padding:8px;border:1px solid #eeeeed;margin-bottom:.5rem}
+.bl-cfg-title{font-size:11px;color:#aaa;margin-bottom:.4rem;display:flex;align-items:center;justify-content:space-between}
+.bl-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:.4rem}
+.blf{display:flex;flex-direction:column;gap:2px}
+.blf label{font-size:10px;color:#bbb}
+.blf input{font-size:12px;padding:3px 6px;border:1px solid #e0e0da;border-radius:4px;background:#fff;color:#1a1a1a;width:100%}
+.blf input:focus{outline:none;border-color:#378ADD}
+.blf input.hi{border-color:#f59f00;background:#fffbf0}
+.bl-type-row{display:flex;gap:4px;margin-bottom:.5rem}
+
+/* click mode step strip */
+.step-strip{display:flex;gap:3px;margin-bottom:.5rem}
+.step{flex:1;text-align:center;font-size:9px;padding:3px 2px;border-radius:3px;border:1px solid #e8e8e4;color:#ccc;transition:all .18s}
+.step.act{background:#fff3cd;border-color:#ffc107;color:#856404;font-weight:500}
+.step.done{background:#d7f5ea;border-color:#1D9E75;color:#0F6E56}
+
+/* chart */
+.chart-outer{background:#fff;border-radius:10px;border:1px solid #e4e4e0;padding:1rem;margin-bottom:.75rem}
+.cwrap{display:grid;gap:12px;align-items:stretch}
+.cwrap.layout-row{grid-template-columns:minmax(260px,var(--thermal-size,35%)) minmax(320px,var(--dsc-size,65%))}
+.cwrap.layout-col{grid-template-columns:1fr;grid-template-rows:minmax(260px,var(--thermal-size,45%)) minmax(260px,var(--dsc-size,55%))}
+.thermal-zone{display:flex;gap:10px;min-height:430px}
+.thermal-zone.table-left{flex-direction:row}
+.thermal-zone.table-bottom{flex-direction:column}
+.chart-pane-wrap{flex:1;min-width:0}
+.chart-pane{position:relative;min-height:430px;background:#fff;border:1px solid #f0f0ee;border-radius:8px;padding:.5rem}
+.chart-pane.thermal{background:#fafaf8}
+.dsc-stack{display:grid;grid-template-rows:1fr 1fr;gap:10px;height:100%;min-height:430px}
+.chart-pane.dsc-small{min-height:210px}
+.chart-tools{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:3}
+.tool-btn{width:30px;height:30px;border:1px solid #d7d7cf;border-radius:7px;background:#fff;color:#666;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.tool-btn:hover{background:#f5f5f2}
+.tool-btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.zoom-box{position:absolute;border:1.5px dashed #378ADD;background:rgba(55,138,221,.12);display:none;pointer-events:none;z-index:2}
+.chart-label{position:absolute;left:10px;top:9px;font-size:10px;color:#999;background:#ffffffcc;border:1px solid #ececea;border-radius:4px;padding:2px 6px;z-index:3}
+.cfoot{font-size:11px;color:#ccc;text-align:center;padding:.3rem 0}
+
+/* metric cards */
+.mc-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:.75rem}
+.mc{background:#fff;border-radius:8px;padding:.55rem .85rem;border:1px solid #e4e4e0}
+.mc .l{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.15rem}
+.mc .v{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* results */
+.rtable-wrap{background:#fff;border-radius:10px;border:1px solid #e4e4e0;overflow:hidden;margin-bottom:.75rem}
+.rhead{padding:.6rem 1rem;border-bottom:1px solid #f0f0ee;font-size:12px;font-weight:500;background:#fafaf8;display:flex;align-items:center;gap:8px}
+table{width:100%;font-size:11.5px;border-collapse:collapse}
+th{padding:5px 10px;text-align:left;color:#bbb;border-bottom:1px solid #f0f0ee;font-weight:400;white-space:nowrap;background:#fafaf8}
+td{padding:5px 10px;border-bottom:1px solid #f7f7f5;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf8}
+.badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:500}
+.badge.melt{background:#dbeeff;color:#185FA5}
+.badge.cryst{background:#d7f5ea;color:#0F6E56}
+.note{font-size:10px;color:#ccc;padding:.35rem .9rem}
+
+/* display controls */
+.disp-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:.6rem .9rem;background:#fafaf8;border-bottom:1px solid #f0f0ee}
+.seg-range-wrap{background:#fff;border:1px solid #ececea;border-radius:8px;display:flex;flex-direction:column;min-width:210px}
+.seg-range-wrap.left{width:260px}
+.seg-range-wrap.bottom{width:100%;max-height:180px}
+.seg-range-head{display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid #f2f2ef;background:#fafaf8}
+.seg-range-head span{font-size:11px;color:#888}
+.seg-range-table-box{overflow:auto}
+.seg-range-table{width:100%;border-collapse:collapse;font-size:11px}
+.seg-range-table th,.seg-range-table td{padding:4px 6px;border-bottom:1px solid #f5f5f2;white-space:nowrap}
+.seg-range-table th{font-size:10px;color:#aaa;background:#fafaf8}
+.seg-range-table td input{width:88px;font-size:11px;padding:2px 4px;border:1px solid #e0e0da;border-radius:4px}
+.seg-range-table td input:focus{outline:none;border-color:#378ADD}
+.seg-range-inline{display:flex;gap:6px;align-items:center;margin-left:auto}
+.seg-range-inline input{width:70px;font-size:11px;padding:2px 4px;border:1px solid #e0e0da;border-radius:4px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>DSC Analyzer</h1>
+  <span class="ver">v6</span>
+  <button class="btn" id="langBtn" onclick="toggleLanguage()" style="margin-left:auto">JP</button>
+  <span class="hsub" id="headerSub">Pyris method-step support - Select segment -> Baseline -> Analyze</span>
+</div>
+
+<div class="wrap">
+<div class="layout">
+
+<!-- ===== SIDEBAR ===== -->
+<div class="sidebar">
+
+  <!-- File loader -->
+  <div class="dz" id="dz">
+    <p id="dropText">Drop files (multiple)<br>or</p>
+    <input type="file" id="fileIn" accept=".txt,.csv" multiple>
+    <button class="btn" id="fileSelectBtn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">Select files</button>
+  </div>
+
+  <!-- File list -->
+  <div class="panel" id="flPanel" style="display:none">
+    <div class="ptitle"><span id="filesTitle">Files</span>
+      <button class="btn warn" id="clearAllBtn" style="font-size:10px;padding:1px 7px;margin-left:auto" onclick="clearAll()">Clear all</button>
+    </div>
+    <div id="fileList"></div>
+  </div>
+
+  <!-- Display -->
+  <div class="panel" id="ctrlPanel" style="display:none">
+    <div class="ptitle" id="displayTitle">Display</div>
+    <div class="lbl" id="xAxisLbl">X Axis</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnTemp" onclick="setX('temp')">Temperature (degC)</button>
+      <button class="btn" id="btnTime" onclick="setX('time')">Time (min)</button>
+    </div>
+    <div class="lbl" id="heatFlowLbl">Heat Flow</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnHF" onclick="setY('hf')">Corrected</button>
+      <button class="btn" id="btnUHF" onclick="setY('uhf')">Raw</button>
+    </div>
+    <div class="lbl" id="dscSpanLbl">Display Span (DSC offset)</div>
+    <div class="bl-grid">
+      <div class="blf"><label>X最小</label><input type="number" id="dscXMin" step="0.1"></div>
+      <div class="blf"><label>X最大</label><input type="number" id="dscXMax" step="0.1"></div>
+      <div class="blf"><label>Y最小</label><input type="number" id="dscYMin" step="0.01"></div>
+      <div class="blf"><label>Y最大</label><input type="number" id="dscYMax" step="0.01"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="applyDscSpanBtn" onclick="applyViewSpan('dsc')">Apply DSC offset span</button>
+      <button class="btn" id="resetDscSpanBtn" onclick="resetViewSpan('dsc')">Reset DSC offset</button>
+    </div>
+    <div class="lbl" id="dscRawSpanLbl">Display Span (DSC without offset)</div>
+    <div class="bl-grid">
+      <div class="blf"><label>X最小</label><input type="number" id="dscRawXMin" step="0.1"></div>
+      <div class="blf"><label>X最大</label><input type="number" id="dscRawXMax" step="0.1"></div>
+      <div class="blf"><label>Y最小</label><input type="number" id="dscRawYMin" step="0.01"></div>
+      <div class="blf"><label>Y最大</label><input type="number" id="dscRawYMax" step="0.01"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="applyDscRawSpanBtn" onclick="applyViewSpan('dscRaw')">Apply DSC without offset span</button>
+      <button class="btn" id="resetDscRawSpanBtn" onclick="resetViewSpan('dscRaw')">Reset DSC without offset</button>
+    </div>
+    <div class="lbl" id="thSpanLbl">Display Span (Thermal)</div>
+    <div class="bl-grid">
+      <div class="blf"><label>t最小 (min)</label><input type="number" id="thXMin" step="0.1"></div>
+      <div class="blf"><label>t最大 (min)</label><input type="number" id="thXMax" step="0.1"></div>
+      <div class="blf"><label>T最小 (°C)</label><input type="number" id="thYMin" step="0.1"></div>
+      <div class="blf"><label>T最大 (°C)</label><input type="number" id="thYMax" step="0.1"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="applyThSpanBtn" onclick="applyViewSpan('thermal')">Apply Thermal span</button>
+      <button class="btn" id="resetThSpanBtn" onclick="resetViewSpan('thermal')">Reset Thermal</button>
+    </div>
+    <div class="lbl" id="graphModeLbl">Graph Interaction Mode</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnZoomMode" onclick="setChartMode('zoom')">Zoom</button>
+      <button class="btn" id="btnLockMode" onclick="setChartMode('lock')">Lock</button>
+      <button class="btn" onclick="allScale('both')" style="margin-left:auto">All Scale</button>
+      <button class="btn" id="allDscBtn" onclick="allScale('dsc')">DSC only</button>
+      <button class="btn" id="allThermalBtn" onclick="allScale('thermal')">Thermal only</button>
+    </div>
+    <div class="lbl" id="hoverLbl">Hover Tooltip</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnHoverOn" onclick="setHoverEnabled(true)">ON</button>
+      <button class="btn" id="btnHoverOff" onclick="setHoverEnabled(false)">OFF</button>
+      <button class="btn on" id="btnHoverFull" onclick="setHoverMode('full')" style="margin-left:auto">Full</button>
+      <button class="btn" id="btnHoverTemp" onclick="setHoverMode('temp')">Temp only</button>
+    </div>
+    <div class="lbl" id="zoomTargetLbl">Range Zoom Target</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnZoomTargetDscAdj" onclick="setZoomRectTarget('dscAdj')">DSC offset</button>
+      <button class="btn" id="btnZoomTargetDscRaw" onclick="setZoomRectTarget('dscRaw')">DSC without offset</button>
+      <button class="btn" id="btnZoomTargetThermal" onclick="setZoomRectTarget('thermal')">Thermal</button>
+      <button class="btn" id="btnZoomTargetAll" onclick="setZoomRectTarget('all')">All</button>
+    </div>
+    <div class="lbl" id="graphLayoutLbl">Graph Layout</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnLayoutRow" onclick="setGraphLayout('row')">Side by side</button>
+      <button class="btn" id="btnLayoutCol" onclick="setGraphLayout('col')">Stacked</button>
+    </div>
+    <div class="lbl" id="ratioLbl">Size Ratio (Thermal / DSC)</div>
+    <div class="btn-row" style="align-items:center">
+      <input type="range" id="layoutRatio" min="25" max="75" step="1" value="35" oninput="setGraphRatio(this.value)" style="width:100%">
+      <span id="layoutRatioLabel" style="font-size:11px;color:#888;min-width:85px;text-align:right">35% / 65%</span>
+    </div>
+    <div class="lbl" id="segPosLbl">Segment Table Position</div>
+    <div class="btn-row">
+      <button class="btn" id="btnSegPosLeft" onclick="setSegTablePos('left')">Left of thermal</button>
+      <button class="btn on" id="btnSegPosBottom" onclick="setSegTablePos('bottom')">Below thermal</button>
+    </div>
+    <div style="font-size:10px;color:#bbb;margin-top:4px">ズーム操作モード時のみ: ホイール(X), Alt+ホイール(Y), 左ドラッグ(範囲ズーム) / Shortcut: Z(ズーム), X(固定), A(All), D(DSC), T(Thermal)</div>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- ===== MAIN ===== -->
+<div class="main">
+
+  <div class="mc-row" id="metaRow" style="display:none"></div>
+
+  <!-- Segment list panel -->
+  <div class="panel" id="segPanel" style="display:none">
+    <div class="ptitle"><span id="segmentTitle">Method Steps (Segments)</span>
+      <span class="badge" id="segHint">Click to expand -> baseline -> run analysis</span>
+      <button class="btn" id="addSegBtn" style="font-size:10px;padding:1px 7px;margin-left:auto" onclick="addSegmentByPrompt()">+ Add</button>
+    </div>
+    <div style="font-size:11px;color:#bbb;margin-bottom:.6rem;padding:.4rem .5rem;background:#fafaf8;border-radius:6px;border:1px solid #f0f0ee">
+      Click each step, set baseline points (T1-T4), apply baseline, then run analysis.
+    </div>
+    <div id="segList" class="seg-list"></div>
+  </div>
+
+  <!-- Chart -->
+  <div class="chart-outer">
+    <div class="disp-row">
+      <span style="font-size:11px;color:#aaa" id="analysisOptLbl">Analysis options:</span>
+      <button class="btn" id="btnPk" onclick="togglePeaks()">Auto peak detect</button>
+      <button class="btn green" id="runAnalysisBtn" onclick="runAnalysis()" style="margin-left:auto">▶ Run analysis (all segments)</button>
+      <button class="btn" id="exportCsvBtn" onclick="exportCSV()">Export CSV</button>
+    </div>
+    <div class="cwrap layout-row" id="chartWrap" style="padding:1rem">
+      <div class="thermal-zone table-bottom" id="thermalZone">
+        <div class="seg-range-wrap bottom" id="segRangeWrap">
+          <div class="seg-range-head">
+            <span id="segRangeTitle">Segment Range (Time min)</span>
+            <div class="seg-range-inline">
+              <span id="offsetEvenLbl" style="font-size:10px;color:#999">Offset Even:</span>
+              <input type="number" id="evenOffStart" step="0.05" value="0" title="Start offset">
+              <input type="number" id="evenOffStep" step="0.05" value="-15" title="Step">
+              <button class="btn" id="applyEvenOffBtn" style="font-size:10px;padding:1px 6px" onclick="applyEvenOffsetFromTable()">Apply</button>
+              <button class="btn" id="applyAllSegBtn" style="font-size:10px;padding:1px 6px" onclick="applyAllSegRangeFromTable()">Apply all</button>
+            </div>
+          </div>
+          <div class="seg-range-table-box">
+            <table class="seg-range-table">
+              <thead>
+                <tr>
+                  <th>Step</th><th id="segStartHead">Start</th><th id="segEndHead">End</th>
+                  <th id="segOffsetHead">Offset</th><th id="segGainHead">Gain</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="segRangeBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="chart-pane-wrap">
+          <div class="chart-pane thermal">
+            <div class="chart-label">Thermal</div>
+            <div class="chart-tools">
+              <button class="tool-btn on" id="thModeBtn" title="ズーム操作" onclick="toggleGraphMode('thermal')">🔍</button>
+              <button class="tool-btn" title="全体表示に戻す" onclick="allScale('thermal')">⤢</button>
+              <button class="tool-btn" title="X拡大" onclick="zoomByButton('thermal','x',0.85)">＋</button>
+              <button class="tool-btn" title="X縮小" onclick="zoomByButton('thermal','x',1.18)">－</button>
+              <button class="tool-btn" title="Y拡大" onclick="zoomByButton('thermal','y',0.85)">↕＋</button>
+              <button class="tool-btn" title="Y縮小" onclick="zoomByButton('thermal','y',1.18)">↕－</button>
+            </div>
+            <div class="zoom-box" id="thZoomBox"></div>
+            <canvas id="thermalCvs" role="img" aria-label="Thermal profile（時間-温度）"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="dsc-stack">
+        <div class="chart-pane dsc-small">
+          <div class="chart-label" id="dscRawLabel">DSC (without offset)</div>
+          <div class="chart-tools">
+            <button class="tool-btn on" id="dscRawModeBtn" title="ズーム操作" onclick="toggleGraphMode('dsc')">🔍</button>
+            <button class="tool-btn" title="全体表示に戻す" onclick="allScale('dscRaw')">⤢</button>
+            <button class="tool-btn" title="X拡大" onclick="zoomByButton('dscRaw','x',0.85)">＋</button>
+            <button class="tool-btn" title="X縮小" onclick="zoomByButton('dscRaw','x',1.18)">－</button>
+            <button class="tool-btn" title="Y拡大" onclick="zoomByButton('dscRaw','y',0.85)">↕＋</button>
+            <button class="tool-btn" title="Y縮小" onclick="zoomByButton('dscRaw','y',1.18)">↕－</button>
+          </div>
+          <div class="zoom-box" id="dscRawZoomBox"></div>
+          <canvas id="cvsRaw" role="img" aria-label="DSC original curve"></canvas>
+        </div>
+        <div class="chart-pane dsc-small">
+          <div class="chart-label" id="dscAdjLabel">DSC (offset/gain applied)</div>
+          <div class="chart-tools">
+            <button class="tool-btn on" id="dscModeBtn" title="ズーム操作" onclick="toggleGraphMode('dsc')">🔍</button>
+            <button class="tool-btn" title="全体表示に戻す" onclick="allScale('dsc')">⤢</button>
+            <button class="tool-btn" title="X拡大" onclick="zoomByButton('dsc','x',0.85)">＋</button>
+            <button class="tool-btn" title="X縮小" onclick="zoomByButton('dsc','x',1.18)">－</button>
+            <button class="tool-btn" title="Y拡大" onclick="zoomByButton('dsc','y',0.85)">↕＋</button>
+            <button class="tool-btn" title="Y縮小" onclick="zoomByButton('dsc','y',1.18)">↕－</button>
+          </div>
+          <div class="zoom-box" id="dscZoomBox"></div>
+          <canvas id="cvs" role="img" aria-label="DSC corrected curve"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="cfoot" id="cfoot">Please load files</div>
+  </div>
+
+  <!-- Results -->
+  <div class="rtable-wrap" id="rSection" style="display:none">
+    <div class="rhead"><span id="resultsTitle">Results</span>
+      <span style="font-size:10px;color:#bbb;font-weight:400;margin-left:6px">ΔH = ∫(HF−BL)dT / scanRate × 60 (baseline-configured segments)</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th></th><th id="resultFileHead">File</th><th>Step</th><th id="resultTypeHead">Type</th>
+          <th>Tonset</th><th>Tpeak</th><th>Tend</th>
+          <th>ΔH (J/g)</th><th>BL</th>
+        </tr></thead>
+        <tbody id="rBody"></tbody>
+      </table>
+    </div>
+    <div class="note">ΔH: J/g（スキャン速度はヘッダーから自動取得）</div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /wrap -->
+
+<script>
+// ─── Constants & state ────────────────────────────────────────────────────────
+const FC=['#378ADD','#D85A30','#7F77DD','#1D9E75','#BA7517','#D4537E','#888780','#639922'];
+// Step colors by type
+const STYPE_COLOR={heating:'#D85A30',cooling:'#378ADD',isothermal:'#888780'};
+const STYPE_LABEL={heating:'加熱',cooling:'冷却',isothermal:'等温'};
+const STYPE_LABEL_EN={heating:'Heating',cooling:'Cooling',isothermal:'Isothermal'};
+
+let files=[];        // file objects
+let activeId=null;
+let xAxis='temp', yCol='hf', showPeaks=false;
+let chart=null, chartRaw=null, thermalChart=null;
+let clickMode=false, clickStep=0, clickSegId=null;
+let nextFid=1;
+let analysisResults=[];
+let dscView={xMin:null,xMax:null,yMin:null,yMax:null};      // with offset
+let dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};   // no offset
+let thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
+let suppressChartClick=false;
+let chartMode={dsc:'zoom',thermal:'zoom'}; // per graph: 'zoom' or 'lock'
+let lastDscBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let lastDscRawBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let lastThermalBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let hoverEnabled=true;
+let hoverMode='full'; // full|temp
+let zoomRectTarget='dscAdj'; // dscAdj|dscRaw|thermal|all
+let graphLayout='row'; // row|col
+let graphRatio=35; // thermal share (%)
+let segTablePos='bottom'; // left|bottom
+let uiLang='en';
+const I18N={
+  en:{
+    dataColsNotFound:'Data columns not found',
+    noNumericData:'No numeric data',
+    enterStartEnd:'Please enter start and end time',
+    startLessThanEnd:'Please set start time < end time',
+    timeRange:'Time range must be between {min} and {max} min',
+    invalidRange:'Could not create a valid range from the specified times',
+    noValidRange:'No valid ranges found (start<end and within measured time range)',
+    enterT1T4:'Please enter all T1 to T4',
+    validTOrder:'Please ensure T1 < T2 < T3 < T4',
+    minLessThanMax:'Please set min < max',
+    runAnalysisFirst:'Run analysis first',
+    deleteSegment:'Delete',
+    addSegment:'Add segment',
+    addSegPromptStart:'Start time (min):',
+    addSegPromptEnd:'End time (min):',
+    cannotDeleteLastSeg:'At least one segment must remain',
+    segRangeHeaderToggle:'Show/hide segment in chart'
+  },
+  ja:{
+    dataColsNotFound:'データ列が見つかりません',
+    noNumericData:'数値データなし',
+    enterStartEnd:'開始時間と終了時間を入力してください',
+    startLessThanEnd:'開始時間 < 終了時間 になるよう設定してください',
+    timeRange:'時間範囲は {min}〜{max} min の間で指定してください',
+    invalidRange:'指定した時間範囲から有効な区間を作れませんでした',
+    noValidRange:'有効な範囲がありませんでした（開始<終了、かつ測定時間範囲内で入力してください）',
+    enterT1T4:'T1〜T4をすべて入力してください',
+    validTOrder:'T1 < T2 < T3 < T4 になるよう設定してください',
+    minLessThanMax:'最小値 < 最大値 で入力してください',
+    runAnalysisFirst:'先に「解析実行」してください',
+    deleteSegment:'削除',
+    addSegment:'セグメント追加',
+    addSegPromptStart:'開始時間 (min):',
+    addSegPromptEnd:'終了時間 (min):',
+    cannotDeleteLastSeg:'少なくとも1つのセグメントが必要です',
+    segRangeHeaderToggle:'グラフ表示/非表示'
+  }
+};
+function t(key,vars={}){
+  let s=(I18N[uiLang]&&I18N[uiLang][key])||I18N.en[key]||key;
+  Object.keys(vars).forEach(k=>{s=s.replace(`{${k}}`,vars[k]);});
+  return s;
+}
+
+function defaultOffsetForIndex(idx){
+  return -15*(Number.isFinite(idx)?idx:0);
+}
+
+// ─── File I/O ─────────────────────────────────────────────────────────────────
+const dz=document.getElementById('dz');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');[...e.dataTransfer.files].forEach(loadFile)});
+document.getElementById('fileIn').addEventListener('change',e=>{[...e.target.files].forEach(loadFile);e.target.value='';});
+
+function loadFile(f){const r=new FileReader();r.onload=e=>parse(e.target.result,f.name);r.readAsText(f,'UTF-8');}
+
+function parse(txt,fname){
+  const lines=txt.split('\n');
+  const meta={};
+  let dataStart=-1;
+  const methodSteps=[];  // [{num, type:'heating'|'cooling'|'isothermal', fromT, toT, rate, duration}]
+
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+
+    // detect data section start
+    if(/^\s*Time\s+Unsubtracted/i.test(l)){dataStart=i+2;break;}
+
+    // metadata key-value
+    const kv=l.split('\t');
+    if(kv.length>=2){const k=kv[0].trim().replace(/:$/,'');const v=kv.slice(1).join('\t').trim();if(k&&v)meta[k]=v;}
+
+    // parse method steps — °C may be encoded as full-width char (U+FF70 = \xef\xbd\xb0), use .C to match any
+    // "1)\tCool from 25.00°C to -80.00°C at 15.00°C/min"
+    const scanMatch=l.match(/^(\d+)\)\s*(Cool|Heat)\s+from\s+([-\d.]+).C\s+to\s+([-\d.]+).C\s+at\s+([\d.]+).C\/min/i);
+    if(scanMatch){
+      const num=parseInt(scanMatch[1]);
+      const dir=scanMatch[2].toLowerCase()==='heat'?'heating':'cooling';
+      methodSteps.push({num,type:dir,fromT:parseFloat(scanMatch[3]),toT:parseFloat(scanMatch[4]),rate:parseFloat(scanMatch[5]),duration:null});
+    }
+    // "2)\tHold for 5.0 min at -80.00°C"
+    const holdMatch=l.match(/^(\d+)\)\s*Hold\s+for\s+([\d.]+)\s*min\s+at\s+([-\d.]+).C/i);
+    if(holdMatch){
+      methodSteps.push({num:parseInt(holdMatch[1]),type:'isothermal',fromT:parseFloat(holdMatch[3]),toT:parseFloat(holdMatch[3]),rate:0,duration:parseFloat(holdMatch[2])});
+    }
+  }
+
+  if(dataStart<0){alert(fname+': '+t('dataColsNotFound'));return;}
+
+  // parse numeric data
+  const rows=[];
+  for(let i=dataStart;i<lines.length;i++){
+    const c=lines[i].trim().split(/\t/);
+    if(c.length<5)continue;
+    const n=c.map(v=>parseFloat(v.trim()));
+    if(n.slice(0,5).some(isNaN))continue;
+    rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
+  }
+  if(!rows.length){alert(fname+': '+t('noNumericData'));return;}
+
+  // Assign rows to method steps based on temperature/time profile
+  const segments=assignSegments(rows, methodSteps);
+
+  const id=nextFid++;
+  const color=FC[(files.length)%FC.length];
+  const weight=parseFloat(meta['Sample Weight']||meta['Display Weight']||'0');
+
+  files.push({id,name:fname,data:rows,segments,meta,weight,color,
+    // per-segment state: visibility, BL settings, selected segment
+    selectedSegIdx:null});
+  activeId=id;
+  refreshUI();
+  renderChart();
+}
+
+// ─── Segment assignment ───────────────────────────────────────────────────────
+function assignSegments(rows,methodSteps){
+  if(!methodSteps.length) return autoSegments(rows);
+
+  const N=rows.length;
+  const segments=[];
+  const time0=rows[0].time;
+  const time1=rows[N-1].time;
+  const measuredTotal=Math.max(1e-6,time1-time0);
+
+  // Thermal program based duration:
+  // - Heat/Cool: |Tstart-Tend| / scanRate
+  // - Hold: duration(min) as-is
+  const rawDur=methodSteps.map(st=>{
+    if(st.type==='isothermal')return Math.max(0,st.duration||0);
+    if(!isFinite(st.rate)||st.rate<=0)return 0;
+    if(!isFinite(st.fromT)||!isFinite(st.toT))return 0;
+    return Math.max(0,Math.abs(st.toT-st.fromT)/st.rate);
+  });
+  let predTotal=rawDur.reduce((a,b)=>a+b,0);
+  if(!isFinite(predTotal)||predTotal<=0) predTotal=measuredTotal;
+
+  // Scale program durations to measured total time to absorb instrument lag / offset.
+  const scale=measuredTotal/predTotal;
+  const scaledDur=rawDur.map(d=>Math.max(0,d*scale));
+  const cumEnds=[];
+  let acc=0;
+  scaledDur.forEach(d=>{acc+=d;cumEnds.push(acc);});
+
+  let cursor=0;
+  methodSteps.forEach((step,si)=>{
+    if(cursor>=N-1)return;
+    let endIdx;
+    if(si===methodSteps.length-1){
+      endIdx=N-1;
+    }else{
+      const expectedAbs=time0+cumEnds[si];
+      endIdx=nearestTimeIndex(rows,expectedAbs);
+      // Ensure monotonic / minimum segment length.
+      endIdx=Math.max(cursor+5,Math.min(endIdx,N-2));
+    }
+    if(endIdx<=cursor)endIdx=Math.min(cursor+10,N-1);
+    const slice=rows.slice(cursor,endIdx+1);
+    segments.push({
+      ...step,
+      idx:si,
+      start:cursor,
+      end:endIdx,
+      tmin:Math.min(...slice.map(r=>r.temp)),
+      tmax:Math.max(...slice.map(r=>r.temp)),
+      tStart:rows[cursor].time,
+      tEnd:rows[endIdx].time,
+      bl:null,
+      visible:true,
+      analyze:true,
+      dOffset:defaultOffsetForIndex(si),
+      yGain:1,
+    });
+    cursor=endIdx+1;
+  });
+
+  if(!segments.length)return autoSegments(rows);
+  // absorb any trailing points into last segment
+  const last=segments[segments.length-1];
+  if(last.end<N-1){
+    last.end=N-1;
+    const slice=rows.slice(last.start,last.end+1);
+    last.tmin=Math.min(...slice.map(r=>r.temp));
+    last.tmax=Math.max(...slice.map(r=>r.temp));
+    last.tEnd=rows[last.end].time;
+  }
+  return segments;
+}
+
+function autoSegments(rows){
+  // fallback: detect by temperature direction
+  const segs=[];let dir=0,ss=0,idx=0;const SM=10;
+  const ld=i=>{const a=Math.max(0,i-SM),b=Math.min(rows.length-1,i+SM);return rows[b].temp-rows[a].temp;};
+  for(let i=SM;i<rows.length-SM;i+=5){
+    const d=ld(i);const nd=Math.abs(d)<0.5?0:(d>0?1:-1);
+    if(nd!==dir&&i-ss>100){
+      if(i-ss>200){
+        const sl=rows.slice(ss,i);
+        const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+        segs.push({num:idx+1,type:tp,idx:idx++,start:ss,end:i-1,rate:15,duration:null,fromT:null,toT:null,
+          tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),
+          tStart:rows[ss].time,tEnd:rows[i-1].time,bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(idx),yGain:1});
+      }
+      ss=i;dir=nd;
+    }
+  }
+  if(rows.length-ss>200){
+    const sl=rows.slice(ss);const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+    segs.push({num:idx+1,type:tp,idx:idx,start:ss,end:rows.length-1,rate:15,duration:null,fromT:null,toT:null,
+      tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),
+      tStart:rows[ss].time,tEnd:rows[rows.length-1].time,bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(idx),yGain:1});
+  }
+  return segs;
+}
+
+function clearAll(){files=[];activeId=null;analysisResults=[];refreshUI();renderChart();}
+function getAF(){return files.find(f=>f.id===activeId)||null;}
+function getF(id){return files.find(f=>f.id===id)||null;}
+
+// ─── UI refresh ───────────────────────────────────────────────────────────────
+function refreshUI(){
+  const has=files.length>0;
+  ['flPanel','ctrlPanel','segPanel'].forEach(id=>document.getElementById(id).style.display=has?'block':'none');
+  document.getElementById('metaRow').style.display=has?'grid':'none';
+  document.getElementById('cfoot').style.display=has?'none':'block';
+
+  // file list
+  const fl=document.getElementById('fileList');fl.innerHTML='';
+  files.forEach(f=>{
+    const d=document.createElement('div');
+    d.className='fi'+(f.id===activeId?' act':'');
+    d.innerHTML=`<span class="fdot" style="background:${f.color}"></span>
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fw">${f.weight?f.weight.toFixed(3)+' mg':''}</span>
+      <span class="fdel" onclick="removeF(${f.id},event)">×</span>`;
+    d.onclick=()=>{activeId=f.id;refreshUI();renderChart();};
+    fl.appendChild(d);
+  });
+
+  // meta cards
+  const af=getAF();const mr=document.getElementById('metaRow');mr.innerHTML='';
+  if(af){
+    const d=af.data;const tmin=Math.min(...d.map(r=>r.temp)),tmax=Math.max(...d.map(r=>r.temp));
+    const maxRate=Math.max(...af.segments.filter(s=>s.rate>0).map(s=>s.rate),0)||15;
+    [['Sample ID',af.meta['Sample ID']||'-'],['重量',af.weight?af.weight.toFixed(3)+' mg':'-'],
+     ['測定日',af.meta['Data Collected']||'-'],['スキャン速度',maxRate+' °C/min'],
+     ['温度範囲',tmin.toFixed(1)+'〜'+tmax.toFixed(1)+' °C'],
+     ['ステップ数',af.segments.length+'']
+    ].forEach(([l,v])=>{mr.innerHTML+=`<div class="mc"><div class="l">${l}</div><div class="v">${v}</div></div>`;});
+  }
+
+  // segment list
+  renderSegList();
+  renderSegRangeTable();
+  syncLayoutUI();
+}
+
+function removeF(id,e){
+  e.stopPropagation();
+  files=files.filter(f=>f.id!==id);
+  if(activeId===id)activeId=files.length?files[files.length-1].id:null;
+  analysisResults=analysisResults.filter(r=>r.fileId!==id);
+  refreshUI();renderChart();
+}
+
+// ─── Segment list rendering ───────────────────────────────────────────────────
+function renderSegList(){
+  const af=getAF();
+  const div=document.getElementById('segList');
+  div.innerHTML='';
+  if(!af)return;
+
+  af.segments.forEach(s=>{
+    const color=STYPE_COLOR[s.type]||'#888';
+    const tlabel=(uiLang==='en'?STYPE_LABEL_EN:STYPE_LABEL)[s.type]||s.type;
+    let desc='';
+    if(s.type==='isothermal') desc=uiLang==='en'
+      ?`Isothermal ${s.fromT!==null?s.fromT.toFixed(1):'?'}°C x ${(s.tEnd-s.tStart).toFixed(1)} min`
+      :`等温 ${s.fromT!==null?s.fromT.toFixed(1):'?'}°C × ${(s.tEnd-s.tStart).toFixed(1)} min`;
+    else desc=`${tlabel} ${(s.tmin).toFixed(1)}→${(s.tmax).toFixed(1)} °C @ ${s.rate}°C/min`;
+
+    const hasBL=!!s.bl;
+    const isSelected=af.selectedSegIdx===s.idx;
+
+    const item=document.createElement('div');
+    item.className='seg-item'+(isSelected?' selected':'');
+    item.id=`seg-item-${s.idx}`;
+
+    // BL summary for header
+    const blInfo=hasBL
+      ?`<span style="font-size:10px;background:#d7f5ea;color:#0F6E56;padding:1px 6px;border-radius:3px;margin-left:4px;flex-shrink:0">BL✓</span>`
+      :'';
+    const analyzeState=s.analyze
+      ?`<span style="font-size:10px;background:#dbeeff;color:#185FA5;padding:1px 6px;border-radius:3px;flex-shrink:0;cursor:pointer" title="${uiLang==='en'?'Click to exclude from analysis':'クリックで解析対象を外す'}" onclick="toggleAnalyze(${s.idx},event)">${uiLang==='en'?'Analyze':'解析対象'}</span>`
+      :`<span style="font-size:10px;color:#ccc;padding:1px 6px;border-radius:3px;border:1px solid #e8e8e8;flex-shrink:0;cursor:pointer" title="${uiLang==='en'?'Click to include in analysis':'クリックして解析対象にする'}" onclick="toggleAnalyze(${s.idx},event)">${uiLang==='en'?'Excluded':'対象外'}</span>`;
+
+    item.innerHTML=`
+      <div class="seg-header" onclick="selectSeg(${s.idx})">
+        <span class="seg-num" style="background:${color}">${s.num}</span>
+        <span class="seg-desc">${desc}${blInfo}</span>
+        ${analyzeState}
+        <button class="btn warn" style="font-size:10px;padding:1px 6px" onclick="deleteSegment(${s.idx},event)">${t('deleteSegment')}</button>
+        <span class="seg-vis ${s.visible?'':'hidden'}" title="${t('segRangeHeaderToggle')}" onclick="toggleVis(${s.idx},event)">${s.visible?'👁':'◌'}</span>
+      </div>
+      <div class="seg-body" id="seg-body-${s.idx}">
+        ${renderSegBody(s,af)}
+      </div>`;
+    div.appendChild(item);
+  });
+}
+
+function renderSegBody(s,af){
+  const hasBL=!!s.bl;
+  const bl=s.bl||{T1:'',T2:'',T3:'',T4:'',type:'sigmoid'};
+  const xUnit=xAxis==='temp'?'°C':'min';
+  const dOffset=Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx);
+  const yGain=Number.isFinite(s.yGain)?s.yGain:1;
+  return `
+    <div class="seg-stats">
+      <div class="seg-stat">${uiLang==='en'?'T range':'T範囲'} <span>${s.tmin.toFixed(1)}〜${s.tmax.toFixed(1)} °C</span></div>
+      <div class="seg-stat">${uiLang==='en'?'Time':'時間'} <span>${s.tStart.toFixed(1)}〜${s.tEnd.toFixed(1)} min</span></div>
+      ${s.rate>0?`<div class="seg-stat">${uiLang==='en'?'Rate':'速度'} <span>${s.rate} °C/min</span></div>`:''}
+    </div>
+    <div class="bl-cfg">
+      <div class="lbl">${uiLang==='en'?'Manual segment range correction (time)':'セグメント区間の手動補正（時間）'}</div>
+      <div class="bl-grid">
+        <div class="blf"><label>${uiLang==='en'?'Start time (min)':'開始時間 (min)'}</label><input type="number" id="sTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></div>
+        <div class="blf"><label>${uiLang==='en'?'End time (min)':'終了時間 (min)'}</label><input type="number" id="sTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></div>
+      </div>
+      <div style="display:flex;gap:5px;margin-bottom:.55rem">
+        <button class="btn" style="width:100%" onclick="applySegRange(${s.idx})">${uiLang==='en'?'Apply this range':'この区間を適用'}</button>
+      </div>
+      <div class="lbl">${uiLang==='en'?'DSC display correction (per segment)':'DSC表示補正（セグメント別）'}</div>
+      <div class="bl-grid">
+        <div class="blf"><label>Yオフセット (mW/mg)</label><input type="number" id="dOff-${s.idx}" value="${dOffset}" step="0.05" oninput="setSegOffset(${s.idx},this.value)"></div>
+        <div class="blf"><label>強度倍率 (×)</label><input type="number" id="dGain-${s.idx}" value="${yGain}" step="0.05" min="0.05" oninput="setSegGain(${s.idx},this.value)"></div>
+      </div>
+      <div class="bl-cfg-title">
+        <span>${uiLang==='en'?'Baseline':'ベースライン設定'} <span style="color:${hasBL?'#1D9E75':'#ccc'}">${hasBL?(uiLang==='en'?'Configured':'設定済み'):(uiLang==='en'?'Not set':'未設定')}</span></span>
+        ${hasBL?`<button class="btn warn" style="font-size:10px;padding:1px 6px" onclick="clearSegBL(${s.idx})">${uiLang==='en'?'Clear':'消去'}</button>`:''}
+      </div>
+      <div class="step-strip" id="sstep-${s.idx}" style="display:none">
+        <div class="step" id="ss0-${s.idx}">① 低温BL開始</div>
+        <div class="step" id="ss1-${s.idx}">② 低温BL終了</div>
+        <div class="step" id="ss2-${s.idx}">③ 高温BL開始</div>
+        <div class="step" id="ss3-${s.idx}">④ 高温BL終了</div>
+      </div>
+      <div class="lbl">${uiLang==='en'?'Low-side BL range':'低温側BL範囲'}</div>
+      <div class="bl-grid">
+        <div class="blf"><label>T1 開始 (${xUnit})</label><input type="number" id="bT1-${s.idx}" value="${bl.T1}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
+        <div class="blf"><label>T2 終了 (${xUnit})</label><input type="number" id="bT2-${s.idx}" value="${bl.T2}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
+      </div>
+      <div class="lbl">${uiLang==='en'?'High-side BL range':'高温側BL範囲'}</div>
+      <div class="bl-grid">
+        <div class="blf"><label>T3 開始 (${xUnit})</label><input type="number" id="bT3-${s.idx}" value="${bl.T3}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
+        <div class="blf"><label>T4 終了 (${xUnit})</label><input type="number" id="bT4-${s.idx}" value="${bl.T4}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
+      </div>
+      <div class="bl-type-row">
+        <button class="btn ${!bl.type||bl.type==='sigmoid'?'on':''}" id="btSig-${s.idx}" onclick="setSegBLType(${s.idx},'sigmoid')">${uiLang==='en'?'Sigmoid':'シグモイド'}</button>
+        <button class="btn ${bl.type==='linear'?'on':''}" id="btLin-${s.idx}" onclick="setSegBLType(${s.idx},'linear')">${uiLang==='en'?'Linear':'直線'}</button>
+        <button class="btn" style="margin-left:auto" onclick="startClickBL(${s.idx})">${uiLang==='en'?'Click assign':'クリック指定'}</button>
+      </div>
+      <button class="btn accent" style="width:100%" onclick="applySegBL(${s.idx})">${uiLang==='en'?'Apply baseline to this segment':'このセグメントにBL適用'}</button>
+    </div>`;
+}
+
+// ─── Segment interactions ─────────────────────────────────────────────────────
+function selectSeg(idx){
+  const af=getAF();if(!af)return;
+  af.selectedSegIdx=af.selectedSegIdx===idx?null:idx;
+  renderSegList();
+  renderChart();
+  // scroll to selected
+  const el=document.getElementById(`seg-item-${idx}`);
+  if(el&&af.selectedSegIdx===idx)el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function toggleVis(idx,e){
+  e.stopPropagation();
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  s.visible=!s.visible;
+  renderSegList();renderChart();
+}
+
+function toggleAnalyze(idx,e){
+  e.stopPropagation();
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  s.analyze=!s.analyze;
+  // update just the badge without full re-render
+  const item=document.getElementById(`seg-item-${idx}`);
+  if(item){
+    const badges=item.querySelectorAll('.seg-header span:last-child');
+    renderSegList(); // simple re-render; segment body stays open via selected state
+  }
+}
+
+function nearestTimeIndex(rows,t){
+  if(!rows.length)return -1;
+  if(t<=rows[0].time)return 0;
+  if(t>=rows[rows.length-1].time)return rows.length-1;
+  let lo=0,hi=rows.length-1;
+  while(lo<hi-1){
+    const m=(lo+hi)>>1;
+    if(rows[m].time<=t)lo=m;
+    else hi=m;
+  }
+  return Math.abs(rows[lo].time-t)<=Math.abs(rows[hi].time-t)?lo:hi;
+}
+
+function recalcSegmentMeta(af,s){
+  const st=Math.max(0,Math.min(af.data.length-2,s.start));
+  const ed=Math.max(st+1,Math.min(af.data.length-1,s.end));
+  const slice=af.data.slice(st,ed+1);
+  s.start=st;
+  s.end=ed;
+  s.tStart=af.data[st].time;
+  s.tEnd=af.data[ed].time;
+  s.tmin=Math.min(...slice.map(r=>r.temp));
+  s.tmax=Math.max(...slice.map(r=>r.temp));
+}
+
+function normalizeSegments(af){
+  af.segments.sort((a,b)=>a.start-b.start);
+  af.segments.forEach((s,i)=>{
+    s.idx=i;
+    s.num=i+1;
+  });
+  if(af.selectedSegIdx!==null){
+    const exists=af.segments.some(s=>s.idx===af.selectedSegIdx);
+    if(!exists)af.selectedSegIdx=af.segments.length?af.segments[0].idx:null;
+  }
+}
+
+function inferSegmentType(af,startIdx,endIdx){
+  const span=Math.max(10,Math.floor((endIdx-startIdx)/12));
+  const dT=af.data[Math.min(af.data.length-1,endIdx)].temp-af.data[Math.max(0,startIdx)].temp;
+  const dt=af.data[Math.min(af.data.length-1,startIdx+span)].temp-af.data[Math.max(0,startIdx)].temp;
+  if(Math.abs(dT)<0.9&&Math.abs(dt)<0.25)return 'isothermal';
+  return dT>=0?'heating':'cooling';
+}
+
+function addSegmentByPrompt(){
+  const af=getAF();if(!af)return;
+  const t0=af.data[0].time, t1=af.data[af.data.length-1].time;
+  const startDefault=((t0*3+t1)/4).toFixed(3);
+  const endDefault=((t0+t1*3)/4).toFixed(3);
+  const sIn=prompt(`${t('addSegPromptStart')} [${t0.toFixed(3)} - ${t1.toFixed(3)}]`,startDefault);
+  if(sIn===null)return;
+  const eIn=prompt(`${t('addSegPromptEnd')} [${t0.toFixed(3)} - ${t1.toFixed(3)}]`,endDefault);
+  if(eIn===null)return;
+  const tStart=parseFloat(sIn), tEnd=parseFloat(eIn);
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  if(tStart>=tEnd){alert(t('startLessThanEnd'));return;}
+  if(tStart<t0||tEnd>t1){alert(t('timeRange',{min:t0.toFixed(3),max:t1.toFixed(3)}));return;}
+  const startIdx=nearestTimeIndex(af.data,tStart);
+  const endIdx=nearestTimeIndex(af.data,tEnd);
+  if(startIdx<0||endIdx<=startIdx){alert(t('invalidRange'));return;}
+  const tp=inferSegmentType(af,startIdx,endIdx);
+  const rate=tp==='isothermal'?0:Math.abs((af.data[endIdx].temp-af.data[startIdx].temp)/Math.max(1e-6,(af.data[endIdx].time-af.data[startIdx].time)));
+  const seg={
+    num:af.segments.length+1,
+    type:tp,
+    idx:af.segments.length,
+    start:startIdx,
+    end:endIdx,
+    rate:+rate.toFixed(2),
+    duration:tp==='isothermal'?(af.data[endIdx].time-af.data[startIdx].time):null,
+    fromT:af.data[startIdx].temp,
+    toT:af.data[endIdx].temp,
+    bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(af.segments.length),yGain:1
+  };
+  recalcSegmentMeta(af,seg);
+  af.segments.push(seg);
+  normalizeSegments(af);
+  af.selectedSegIdx=seg.idx;
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function deleteSegment(idx,e){
+  if(e)e.stopPropagation();
+  const af=getAF();if(!af)return;
+  if(af.segments.length<=1){alert(t('cannotDeleteLastSeg'));return;}
+  const pos=af.segments.findIndex(s=>s.idx===idx);
+  if(pos<0)return;
+  af.segments.splice(pos,1);
+  if(clickSegId===idx){clickMode=false;clickStep=0;clickSegId=null;}
+  normalizeSegments(af);
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function applySegRange(idx){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const tStart=parseFloat(document.getElementById(`sTs-${idx}`)?.value);
+  const tEnd=parseFloat(document.getElementById(`sTe-${idx}`)?.value);
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  if(tStart>=tEnd){alert(t('startLessThanEnd'));return;}
+
+  const minTime=af.data[0].time;
+  const maxTime=af.data[af.data.length-1].time;
+  if(tStart<minTime||tEnd>maxTime){
+    alert(t('timeRange',{min:minTime.toFixed(3),max:maxTime.toFixed(3)}));
+    return;
+  }
+
+  const startIdx=nearestTimeIndex(af.data,tStart);
+  const endIdx=nearestTimeIndex(af.data,tEnd);
+  if(startIdx<0||endIdx<0||startIdx>=endIdx){
+    alert(t('invalidRange'));
+    return;
+  }
+
+  const slice=af.data.slice(startIdx,endIdx+1);
+  s.start=startIdx;
+  s.end=endIdx;
+  s.tStart=af.data[startIdx].time;
+  s.tEnd=af.data[endIdx].time;
+  s.tmin=Math.min(...slice.map(r=>r.temp));
+  s.tmax=Math.max(...slice.map(r=>r.temp));
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function renderSegRangeTable(){
+  const body=document.getElementById('segRangeBody');
+  if(!body)return;
+  const af=getAF();
+  body.innerHTML='';
+  if(!af)return;
+  af.segments.forEach(s=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${s.num}</td>
+      <td><input type="number" id="trTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></td>
+      <td><input type="number" id="trTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></td>
+      <td><input type="number" id="trOff-${s.idx}" value="${Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx)}" step="0.05" oninput="setSegOffset(${s.idx},this.value,false)"></td>
+      <td><input type="number" id="trGain-${s.idx}" value="${Number.isFinite(s.yGain)?s.yGain:1}" step="0.05" min="0.05" oninput="setSegGain(${s.idx},this.value,false)"></td>
+      <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">${uiLang==='en'?'Apply':'適用'}</button></td>`;
+    body.appendChild(tr);
+  });
+}
+
+function applySegRangeFromTable(idx){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const tStart=parseFloat(document.getElementById(`trTs-${idx}`)?.value);
+  const tEnd=parseFloat(document.getElementById(`trTe-${idx}`)?.value);
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  const segStartInput=document.getElementById(`sTs-${idx}`);
+  const segEndInput=document.getElementById(`sTe-${idx}`);
+  if(segStartInput)segStartInput.value=tStart;
+  if(segEndInput)segEndInput.value=tEnd;
+  applySegRange(idx);
+}
+
+function applyAllSegRangeFromTable(){
+  const af=getAF();if(!af)return;
+  const minTime=af.data[0].time;
+  const maxTime=af.data[af.data.length-1].time;
+  let okCount=0;
+  for(const s of af.segments){
+    const tStart=parseFloat(document.getElementById(`trTs-${s.idx}`)?.value);
+    const tEnd=parseFloat(document.getElementById(`trTe-${s.idx}`)?.value);
+    const dOff=parseFloat(document.getElementById(`trOff-${s.idx}`)?.value);
+    const dGain=parseFloat(document.getElementById(`trGain-${s.idx}`)?.value);
+    if(isNaN(tStart)||isNaN(tEnd))continue;
+    if(!(tStart<tEnd))continue;
+    if(tStart<minTime||tEnd>maxTime)continue;
+    s.tStart=tStart;
+    s.tEnd=tEnd;
+    const startIdx=nearestTimeIndex(af.data,tStart);
+    const endIdx=nearestTimeIndex(af.data,tEnd);
+    if(startIdx>=0&&endIdx>startIdx){
+      s.start=startIdx;
+      s.end=endIdx;
+      const slice=af.data.slice(startIdx,endIdx+1);
+      s.tStart=af.data[startIdx].time;
+      s.tEnd=af.data[endIdx].time;
+      s.tmin=Math.min(...slice.map(r=>r.temp));
+      s.tmax=Math.max(...slice.map(r=>r.temp));
+      s.dOffset=isNaN(dOff)?defaultOffsetForIndex(s.idx):dOff;
+      s.yGain=(isNaN(dGain)||dGain<=0)?1:dGain;
+      okCount++;
+    }
+  }
+  if(!okCount){
+    alert(t('noValidRange'));
+    return;
+  }
+  analysisResults=analysisResults.filter(r=>r.fileId!==af.id);
+  renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function setSegOffset(idx,v,syncTable=true){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const n=parseFloat(v);
+  s.dOffset=isNaN(n)?defaultOffsetForIndex(idx):n;
+  if(syncTable){
+    const tableInput=document.getElementById(`trOff-${idx}`);
+    if(tableInput)tableInput.value=String(s.dOffset);
+  }
+  renderChart();
+}
+
+function setSegGain(idx,v,syncTable=true){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const n=parseFloat(v);
+  if(isNaN(n)||n<=0){s.yGain=1;
+    if(syncTable){
+      const tableInput=document.getElementById(`trGain-${idx}`);
+      if(tableInput)tableInput.value='1';
+    }
+    renderChart();return;}
+  s.yGain=n;
+  if(syncTable){
+    const tableInput=document.getElementById(`trGain-${idx}`);
+    if(tableInput)tableInput.value=String(s.yGain);
+  }
+  renderChart();
+}
+
+function applyEvenOffsetFromTable(){
+  const af=getAF();if(!af)return;
+  const base=parseFloat(document.getElementById('evenOffStart')?.value);
+  const step=parseFloat(document.getElementById('evenOffStep')?.value);
+  const start=isNaN(base)?0:base;
+  const pitch=isNaN(step)?-15:step;
+  af.segments.forEach((s,i)=>{
+    s.dOffset=+(start+pitch*i).toFixed(5);
+  });
+  renderSegRangeTable();
+  renderChart();
+}
+
+function setSegBLType(idx,type){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  if(!s.bl)s.bl={T1:'',T2:'',T3:'',T4:'',type};
+  else s.bl.type=type;
+  document.getElementById(`btSig-${idx}`)?.classList.toggle('on',type==='sigmoid');
+  document.getElementById(`btLin-${idx}`)?.classList.toggle('on',type==='linear');
+}
+
+function applySegBL(idx){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const T=[parseFloat(document.getElementById(`bT1-${idx}`)?.value),
+           parseFloat(document.getElementById(`bT2-${idx}`)?.value),
+           parseFloat(document.getElementById(`bT3-${idx}`)?.value),
+           parseFloat(document.getElementById(`bT4-${idx}`)?.value)];
+  if(T.some(isNaN)){alert(t('enterT1T4'));return;}
+  if(!(T[0]<T[1]&&T[1]<T[2]&&T[2]<T[3])){alert(t('validTOrder'));return;}
+  const type=(document.getElementById(`btSig-${idx}`)?.classList.contains('on'))?'sigmoid':'linear';
+  s.bl={T1:T[0],T2:T[1],T3:T[2],T4:T[3],type};
+  s.analyze=true;
+  renderSegList();renderChart();
+}
+
+function clearSegBL(idx){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  s.bl=null;renderSegList();renderChart();
+}
+
+// ─── Click BL mode ────────────────────────────────────────────────────────────
+function startClickBL(idx){
+  if(clickMode&&clickSegId===idx){
+    // cancel
+    clickMode=false;clickStep=0;clickSegId=null;
+    updateClickStepUI(idx,-1);
+    return;
+  }
+  clickMode=true;clickStep=0;clickSegId=idx;
+  // ensure segment is selected
+  const af=getAF();if(af)af.selectedSegIdx=idx;
+  renderSegList();
+  document.getElementById(`sstep-${idx}`).style.display='flex';
+  updateClickStepUI(idx,0);
+  document.getElementById(`seg-item-${idx}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function updateClickStepUI(idx,step){
+  for(let i=0;i<4;i++){
+    const el=document.getElementById(`ss${i}-${idx}`);
+    if(!el)continue;
+    el.className='step'+(i<step?' done':i===step?' act':'');
+  }
+}
+
+function handleChartClick(e){
+  if(suppressChartClick){suppressChartClick=false;return;}
+  if(!clickMode||clickSegId===null)return;
+  const els=chart.getElementsAtEventForMode(e,'nearest',{intersect:false},true);
+  if(!els.length)return;
+  const ds=chart.data.datasets[els[0].datasetIndex];
+  if(ds._isBL||ds._isPeak||ds._isClick)return;
+  const xVal=ds.data[els[0].index].x;
+  const idx=clickSegId;
+
+  const ids=['bT1','bT2','bT3','bT4'];
+  const inp=document.getElementById(`${ids[clickStep]}-${idx}`);
+  if(inp){inp.value=xVal.toFixed(2);inp.classList.add('hi');setTimeout(()=>inp.classList.remove('hi'),600);}
+
+  clickStep++;
+  if(clickStep>=4){
+    clickMode=false;
+    updateClickStepUI(idx,4);
+    document.getElementById(`sstep-${idx}`).style.display='none';
+    clickSegId=null;
+    // auto-apply
+    setTimeout(()=>applySegBL(idx),100);
+  } else {
+    updateClickStepUI(idx,clickStep);
+    renderChart();
+  }
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+function setX(v){xAxis=v;document.getElementById('btnTemp').classList.toggle('on',v==='temp');document.getElementById('btnTime').classList.toggle('on',v==='time');renderChart();}
+function setY(v){yCol=v;document.getElementById('btnHF').classList.toggle('on',v==='hf');document.getElementById('btnUHF').classList.toggle('on',v==='uhf');renderChart();}
+function togglePeaks(){showPeaks=!showPeaks;document.getElementById('btnPk').classList.toggle('on',showPeaks);renderChart();}
+
+function setInputVal(id,v,step){
+  const el=document.getElementById(id);if(!el)return;
+  if(v===null||v===undefined||!isFinite(v)){el.value='';return;}
+  el.value=(+v).toFixed(step);
+}
+
+function syncViewInputs(dscBounds,thermalBounds){
+  setInputVal('dscXMin',dscView.xMin??dscBounds.xMin,3);
+  setInputVal('dscXMax',dscView.xMax??dscBounds.xMax,3);
+  setInputVal('dscYMin',dscView.yMin??dscBounds.yMin,4);
+  setInputVal('dscYMax',dscView.yMax??dscBounds.yMax,4);
+  setInputVal('dscRawXMin',dscRawView.xMin??lastDscRawBounds.xMin,3);
+  setInputVal('dscRawXMax',dscRawView.xMax??lastDscRawBounds.xMax,3);
+  setInputVal('dscRawYMin',dscRawView.yMin??lastDscRawBounds.yMin,4);
+  setInputVal('dscRawYMax',dscRawView.yMax??lastDscRawBounds.yMax,4);
+  setInputVal('thXMin',thermalView.xMin??thermalBounds.xMin,3);
+  setInputVal('thXMax',thermalView.xMax??thermalBounds.xMax,3);
+  setInputVal('thYMin',thermalView.yMin??thermalBounds.yMin,3);
+  setInputVal('thYMax',thermalView.yMax??thermalBounds.yMax,3);
+}
+
+function parseRange(a,b){
+  const lo=parseFloat(document.getElementById(a)?.value);
+  const hi=parseFloat(document.getElementById(b)?.value);
+  if(isNaN(lo)||isNaN(hi))return{min:null,max:null,ok:false};
+  return{min:lo,max:hi,ok:lo<hi};
+}
+
+function applyViewSpan(which){
+  if(which==='dsc'){
+    const xr=parseRange('dscXMin','dscXMax');
+    const yr=parseRange('dscYMin','dscYMax');
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
+    dscView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
+  }else if(which==='dscRaw'){
+    const xr=parseRange('dscRawXMin','dscRawXMax');
+    const yr=parseRange('dscRawYMin','dscRawYMax');
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
+    dscRawView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
+  }else{
+    const xr=parseRange('thXMin','thXMax');
+    const yr=parseRange('thYMin','thYMax');
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
+    thermalView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
+  }
+  renderChart();
+}
+
+function resetViewSpan(which){
+  if(which==='dsc')dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  else if(which==='dscRaw')dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};
+  else thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
+  renderChart();
+}
+
+function syncModeButtons(){
+  document.getElementById('btnZoomMode')?.classList.toggle('on',chartMode.dsc==='zoom'&&chartMode.thermal==='zoom');
+  document.getElementById('btnLockMode')?.classList.toggle('on',chartMode.dsc==='lock'&&chartMode.thermal==='lock');
+  document.getElementById('dscModeBtn')?.classList.toggle('on',chartMode.dsc==='zoom');
+  document.getElementById('dscRawModeBtn')?.classList.toggle('on',chartMode.dsc==='zoom');
+  document.getElementById('thModeBtn')?.classList.toggle('on',chartMode.thermal==='zoom');
+  document.getElementById('btnHoverOn')?.classList.toggle('on',hoverEnabled);
+  document.getElementById('btnHoverOff')?.classList.toggle('on',!hoverEnabled);
+  document.getElementById('btnHoverFull')?.classList.toggle('on',hoverMode==='full');
+  document.getElementById('btnHoverTemp')?.classList.toggle('on',hoverMode==='temp');
+  document.getElementById('btnZoomTargetDscAdj')?.classList.toggle('on',zoomRectTarget==='dscAdj');
+  document.getElementById('btnZoomTargetDscRaw')?.classList.toggle('on',zoomRectTarget==='dscRaw');
+  document.getElementById('btnZoomTargetThermal')?.classList.toggle('on',zoomRectTarget==='thermal');
+  document.getElementById('btnZoomTargetAll')?.classList.toggle('on',zoomRectTarget==='all');
+}
+
+function setChartMode(mode,which='both'){
+  const m=mode==='lock'?'lock':'zoom';
+  if(which==='both'||which==='dsc')chartMode.dsc=m;
+  if(which==='both'||which==='thermal')chartMode.thermal=m;
+  syncModeButtons();
+}
+
+function setHoverEnabled(v){
+  hoverEnabled=!!v;
+  syncModeButtons();
+  renderChart();
+}
+
+function setHoverMode(mode){
+  hoverMode=mode==='temp'?'temp':'full';
+  syncModeButtons();
+  renderChart();
+}
+
+function setZoomRectTarget(target){
+  zoomRectTarget=(target==='dscRaw'||target==='thermal'||target==='all')?target:'dscAdj';
+  syncModeButtons();
+}
+
+function tempFromMetaAtX(meta,xVal){
+  const f=getF(meta?.fileId);
+  if(!f)return null;
+  const s=f.segments.find(seg=>seg.idx===meta?.segIdx);
+  if(!s)return null;
+  if(xAxis==='temp')return xVal;
+  const i0=Math.max(0,s.start), i1=Math.min(f.data.length-1,s.end);
+  let best=f.data[i0], bd=Math.abs(best.time-xVal);
+  for(let i=i0+1;i<=i1;i++){
+    const d=Math.abs(f.data[i].time-xVal);
+    if(d<bd){bd=d;best=f.data[i];}
+  }
+  return best?.temp ?? null;
+}
+
+function syncLayoutUI(){
+  const wrap=document.getElementById('chartWrap');
+  const zone=document.getElementById('thermalZone');
+  const segWrap=document.getElementById('segRangeWrap');
+  if(!wrap||!zone||!segWrap)return;
+  wrap.classList.toggle('layout-row',graphLayout==='row');
+  wrap.classList.toggle('layout-col',graphLayout==='col');
+  zone.classList.toggle('table-left',segTablePos==='left');
+  zone.classList.toggle('table-bottom',segTablePos==='bottom');
+  segWrap.classList.toggle('left',segTablePos==='left');
+  segWrap.classList.toggle('bottom',segTablePos==='bottom');
+  wrap.style.setProperty('--thermal-size',`${graphRatio}%`);
+  wrap.style.setProperty('--dsc-size',`${100-graphRatio}%`);
+  const label=document.getElementById('layoutRatioLabel');
+  if(label)label.textContent=`${graphRatio}% / ${100-graphRatio}%`;
+  const slider=document.getElementById('layoutRatio');
+  if(slider&&slider.value!==String(graphRatio))slider.value=String(graphRatio);
+  document.getElementById('btnLayoutRow')?.classList.toggle('on',graphLayout==='row');
+  document.getElementById('btnLayoutCol')?.classList.toggle('on',graphLayout==='col');
+  document.getElementById('btnSegPosLeft')?.classList.toggle('on',segTablePos==='left');
+  document.getElementById('btnSegPosBottom')?.classList.toggle('on',segTablePos==='bottom');
+}
+
+function setGraphLayout(mode){
+  graphLayout=mode==='col'?'col':'row';
+  syncLayoutUI();
+  renderChart();
+}
+
+function setGraphRatio(v){
+  const n=parseInt(v,10);
+  graphRatio=Math.min(75,Math.max(25,isNaN(n)?35:n));
+  syncLayoutUI();
+  renderChart();
+}
+
+function setSegTablePos(pos){
+  segTablePos=pos==='bottom'?'bottom':'left';
+  syncLayoutUI();
+}
+
+function applyLanguage(){
+  document.documentElement.lang=uiLang==='en'?'en':'ja';
+  const set=(id,en,ja)=>{const el=document.getElementById(id);if(el)el.textContent=uiLang==='en'?en:ja;};
+  const dropTextEl=document.getElementById('dropText');
+  if(dropTextEl)dropTextEl.innerHTML=uiLang==='en'?'Drop files (multiple)<br>or':'ファイルをドロップ（複数可）<br>または';
+  set('headerSub','Pyris method-step support - Select segment -> Baseline -> Analyze','Pyris メソッドステップ対応 · セグメント選択 → BL設定 → 解析');
+  set('fileSelectBtn','Select files','ファイルを選択');
+  set('filesTitle','Files','ファイル');
+  set('clearAllBtn','Clear all','全消去');
+  set('displayTitle','Display','表示');
+  set('xAxisLbl','X Axis','X軸');
+  set('heatFlowLbl','Heat Flow','熱流');
+  set('btnTemp','Temperature (degC)','温度 (°C)');
+  set('btnTime','Time (min)','時間 (min)');
+  set('btnHF','Corrected','補正後');
+  set('dscSpanLbl','Display Span (DSC offset)','表示スパン（DSCオフセット）');
+  set('applyDscSpanBtn','Apply DSC offset span','DSCオフセット適用');
+  set('resetDscSpanBtn','Reset DSC offset','DSCオフセットリセット');
+  set('dscRawSpanLbl','Display Span (DSC without offset)','表示スパン（DSCオフセットなし）');
+  set('applyDscRawSpanBtn','Apply DSC without offset span','DSCオフセットなし適用');
+  set('resetDscRawSpanBtn','Reset DSC without offset','DSCオフセットなしリセット');
+  set('thSpanLbl','Display Span (Thermal)','表示スパン（Thermal）');
+  set('applyThSpanBtn','Apply Thermal span','Thermalスパン適用');
+  set('resetThSpanBtn','Reset Thermal','Thermalリセット');
+  set('graphModeLbl','Graph Interaction Mode','グラフ操作モード');
+  set('hoverLbl','Hover Tooltip','マウスオーバー');
+  set('btnZoomMode','Zoom','ズーム操作');
+  set('btnLockMode','Lock','固定');
+  set('btnHoverFull','Full','通常');
+  set('btnHoverTemp','Temp only','温度のみ');
+  set('zoomTargetLbl','Range Zoom Target','範囲ズーム対象');
+  set('btnZoomTargetDscAdj','DSC offset','DSCオフセット');
+  set('btnZoomTargetDscRaw','DSC without offset','DSCオフセットなし');
+  set('btnZoomTargetThermal','Thermal','熱履歴');
+  set('btnZoomTargetAll','All','全て');
+  set('allDscBtn','DSC only','DSCのみ');
+  set('allThermalBtn','Thermal only','Thermalのみ');
+  set('graphLayoutLbl','Graph Layout','グラフ配置');
+  set('btnLayoutRow','Side by side','横並び');
+  set('btnLayoutCol','Stacked','縦並び');
+  set('ratioLbl','Size Ratio (Thermal / DSC)','サイズ比（Thermal / DSC）');
+  set('segPosLbl','Segment Table Position','セグメント範囲表の位置');
+  set('btnSegPosLeft','Left of thermal','熱履歴の左');
+  set('btnSegPosBottom','Below thermal','熱履歴の下');
+  set('segmentTitle','Method Steps (Segments)','メソッドステップ（セグメント）');
+  set('addSegBtn','+ Add','+ 追加');
+  set('segHint','Click to expand -> baseline -> run analysis','クリックで展開 → BL設定 → 解析実行');
+  set('analysisOptLbl','Analysis options:','解析オプション：');
+  set('btnPk','Auto peak detect','ピーク自動検出');
+  set('runAnalysisBtn','▶ Run analysis (all segments)','▶ 全セグメント解析実行');
+  set('exportCsvBtn','Export CSV','CSV出力');
+  set('segRangeTitle','Segment Range (Time min)','セグメント範囲（時間 min）');
+  set('applyAllSegBtn','Apply all','一括適用');
+  set('offsetEvenLbl','Offset Even:','Offset等間隔:');
+  set('applyEvenOffBtn','Apply','適用');
+  set('segStartHead','Start','開始');
+  set('segEndHead','End','終了');
+  set('segOffsetHead','Offset','オフセット');
+  set('segGainHead','Gain','倍率');
+  set('dscRawLabel','DSC (without offset)','DSC（オフセットなし）');
+  set('dscAdjLabel','DSC (offset/gain applied)','DSC（オフセット/倍率適用）');
+  set('cfoot','Please load files','ファイルを読み込んでください');
+  set('resultsTitle','Results','解析結果');
+  set('resultFileHead','File','ファイル');
+  set('resultTypeHead','Type','種別');
+  const langBtn=document.getElementById('langBtn');
+  if(langBtn)langBtn.textContent=uiLang==='en'?'JP':'EN';
+  refreshUI();
+}
+
+function toggleLanguage(){
+  uiLang=uiLang==='en'?'ja':'en';
+  applyLanguage();
+}
+
+function toggleGraphMode(which){
+  setChartMode(chartMode[which]==='zoom'?'lock':'zoom',which);
+}
+
+function allScale(which){
+  if(which==='both'||which==='dsc')dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  if(which==='both'||which==='dsc'||which==='dscRaw')dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};
+  if(which==='both'||which==='thermal')thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
+  renderChart();
+}
+
+function zoomByButton(which,axis,factor){
+  const isDsc=which==='dsc'||which==='dscRaw';
+  const isRaw=which==='dscRaw';
+  const ch=isRaw?chartRaw:(isDsc?chart:thermalChart);
+  if(!ch)return;
+  const view=isRaw?dscRawView:(isDsc?dscView:thermalView);
+  const bounds=isRaw?lastDscRawBounds:(isDsc?lastDscBounds:lastThermalBounds);
+  const sx=ch.scales.x, sy=ch.scales.y;
+  if(axis==='x'){
+    const center=(sx.min+sx.max)/2;
+    const next=zoomRange(view.xMin??sx.min,view.xMax??sx.max,center,factor,bounds.xMin,bounds.xMax);
+    view.xMin=next[0];view.xMax=next[1];
+  }else{
+    const center=(sy.min+sy.max)/2;
+    const next=zoomRange(view.yMin??sy.min,view.yMax??sy.max,center,factor,bounds.yMin,bounds.yMax);
+    view.yMin=next[0];view.yMax=next[1];
+  }
+  renderChart();
+}
+
+function isTypingTarget(el){
+  if(!el)return false;
+  const tag=(el.tagName||'').toLowerCase();
+  return tag==='input'||tag==='textarea'||tag==='select'||el.isContentEditable;
+}
+
+function initShortcuts(){
+  if(document.body.dataset.shortcutBound==='1')return;
+  document.body.dataset.shortcutBound='1';
+  document.addEventListener('keydown',e=>{
+    if(isTypingTarget(e.target))return;
+    if(e.metaKey||e.ctrlKey||e.altKey)return;
+    const k=(e.key||'').toLowerCase();
+    if(k==='z'){
+      e.preventDefault();
+      setChartMode('zoom');
+      return;
+    }
+    if(k==='x'){
+      e.preventDefault();
+      setChartMode('lock');
+      return;
+    }
+    if(k==='a'){
+      e.preventDefault();
+      allScale('both');
+      return;
+    }
+    if(k==='d'){
+      e.preventDefault();
+      allScale('dsc');
+      return;
+    }
+    if(k==='t'){
+      e.preventDefault();
+      allScale('thermal');
+      return;
+    }
+  });
+}
+
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function zoomRange(min,max,center,factor,boundMin,boundMax){
+  if(!isFinite(min)||!isFinite(max)||max<=min)return[min,max];
+  const span=(max-min)*factor;
+  const c=clamp(center,min,max);
+  let nMin=c-(c-min)*factor;
+  let nMax=nMin+span;
+  if(isFinite(boundMin)&&nMin<boundMin){nMax+=boundMin-nMin;nMin=boundMin;}
+  if(isFinite(boundMax)&&nMax>boundMax){nMin-=nMax-boundMax;nMax=boundMax;}
+  if(nMax<=nMin)return[min,max];
+  return[nMin,nMax];
+}
+
+function bindWheelZoom(canvas,chartRef,view,bounds,modeGetter){
+  if(!canvas||canvas.dataset.zoomBound==='1')return;
+  canvas.dataset.zoomBound='1';
+  canvas.addEventListener('wheel',e=>{
+    if(modeGetter()!=='zoom')return;
+    const ch=chartRef();
+    if(!ch)return;
+    e.preventDefault();
+    const zf=e.deltaY<0?0.85:1.18;
+    if(e.altKey){
+      const sc=ch.scales.y;
+      const c=sc.getValueForPixel(e.offsetY);
+      const curMin=view.yMin??sc.min,curMax=view.yMax??sc.max;
+      const next=zoomRange(curMin,curMax,c,zf,bounds.yMin,bounds.yMax);
+      view.yMin=next[0];view.yMax=next[1];
+    }else{
+      const sc=ch.scales.x;
+      const c=sc.getValueForPixel(e.offsetX);
+      const curMin=view.xMin??sc.min,curMax=view.xMax??sc.max;
+      const next=zoomRange(curMin,curMax,c,zf,bounds.xMin,bounds.xMax);
+      view.xMin=next[0];view.xMax=next[1];
+    }
+    renderChart();
+  },{passive:false});
+}
+
+function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl){
+  if(!canvas||canvas.dataset.dragZoomBound==='1')return;
+  canvas.dataset.dragZoomBound='1';
+  const st={active:false,sx:0,sy:0};
+
+  canvas.addEventListener('mousedown',e=>{
+    if(modeGetter()!=='zoom')return;
+    if(e.button!==0)return;
+    st.active=true;
+    st.sx=e.offsetX;
+    st.sy=e.offsetY;
+    if(boxEl){
+      boxEl.style.display='block';
+      boxEl.style.left=`${st.sx}px`;
+      boxEl.style.top=`${st.sy}px`;
+      boxEl.style.width='0px';
+      boxEl.style.height='0px';
+    }
+  });
+
+  canvas.addEventListener('mousemove',e=>{
+    if(!st.active||!boxEl)return;
+    const x=Math.min(st.sx,e.offsetX),y=Math.min(st.sy,e.offsetY);
+    const w=Math.abs(e.offsetX-st.sx),h=Math.abs(e.offsetY-st.sy);
+    boxEl.style.left=`${x}px`;
+    boxEl.style.top=`${y}px`;
+    boxEl.style.width=`${w}px`;
+    boxEl.style.height=`${h}px`;
+  });
+
+  canvas.addEventListener('mouseup',e=>{
+    if(!st.active)return;
+    st.active=false;
+    const dx=Math.abs(e.offsetX-st.sx);
+    const dy=Math.abs(e.offsetY-st.sy);
+    if(boxEl)boxEl.style.display='none';
+    if(dx<6&&dy<6)return;
+    const ch=chartRef();
+    if(!ch)return;
+    const sx=ch.scales.x, sy=ch.scales.y;
+    const x1=sx.getValueForPixel(st.sx), x2=sx.getValueForPixel(e.offsetX);
+    const y1=sy.getValueForPixel(st.sy), y2=sy.getValueForPixel(e.offsetY);
+    if(!isFinite(x1)||!isFinite(x2)||!isFinite(y1)||!isFinite(y2))return;
+    const nxMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);
+    const nxMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);
+    const nyMin=clamp(Math.min(y1,y2),bounds.yMin,bounds.yMax);
+    const nyMax=clamp(Math.max(y1,y2),bounds.yMin,bounds.yMax);
+    const applyToDscAdj=zoomRectTarget==='dscAdj'||zoomRectTarget==='all';
+    const applyToDscRaw=zoomRectTarget==='dscRaw'||zoomRectTarget==='all';
+    // Thermal X-axis is always time. Cross-applying from DSC to thermal only makes sense in time mode.
+    const applyToThermal=(zoomRectTarget==='thermal'||zoomRectTarget==='all')&&(view===thermalView||xAxis==='time');
+    if(view===thermalView){
+      if(applyToThermal){
+        thermalView.xMin=nxMin;thermalView.xMax=nxMax;thermalView.yMin=nyMin;thermalView.yMax=nyMax;
+      }
+      if(applyToDscAdj){
+        dscView.xMin=nxMin;dscView.xMax=nxMax;dscView.yMin=nyMin;dscView.yMax=nyMax;
+      }
+      if(applyToDscRaw){
+        dscRawView.xMin=nxMin;dscRawView.xMax=nxMax;dscRawView.yMin=nyMin;dscRawView.yMax=nyMax;
+      }
+    }else{
+      const isAdj=view===dscView;
+      const isRaw=view===dscRawView;
+      if((isAdj&&applyToDscAdj)||(isRaw&&applyToDscRaw)||(zoomRectTarget==='all')){
+        view.xMin=nxMin;view.xMax=nxMax;view.yMin=nyMin;view.yMax=nyMax;
+      }
+      if(zoomRectTarget==='all'){
+        if(isAdj){dscRawView.xMin=nxMin;dscRawView.xMax=nxMax;dscRawView.yMin=nyMin;dscRawView.yMax=nyMax;}
+        if(isRaw){dscView.xMin=nxMin;dscView.xMax=nxMax;dscView.yMin=nyMin;dscView.yMax=nyMax;}
+      }
+      if(applyToThermal){
+        thermalView.xMin=nxMin;thermalView.xMax=nxMax;thermalView.yMin=nyMin;thermalView.yMax=nyMax;
+      }
+    }
+    suppressChartClick=true;
+    renderChart();
+  });
+
+  canvas.addEventListener('mouseleave',()=>{
+    st.active=false;
+    if(boxEl)boxEl.style.display='none';
+  });
+}
+
+// ─── Sampling ─────────────────────────────────────────────────────────────────
+function getPts(fobj,seg,step=3){
+  return fobj.data.slice(seg.start,seg.end+1).filter((_,j)=>j%step===0).map(r=>({
+    x:xAxis==='temp'?+r.temp.toFixed(3):+r.time.toFixed(4),
+    y:+(yCol==='hf'?r.hf:r.hf_raw||r.hf).toFixed(5)
+  }));
+}
+
+// ─── Baseline computation ─────────────────────────────────────────────────────
+function computeBL(pts,bl){
+  const {T1,T2,T3,T4,type}=bl;
+  const inR=(p,a,b)=>pts.filter(pt=>pt.x>=a&&pt.x<=b);
+  const loR=inR(pts,T1,T2),hiR=inR(pts,T3,T4);
+  if(!loR.length||!hiR.length)return null;
+  const linFit=arr=>{
+    const n=arr.length,mx=arr.reduce((s,p)=>s+p.x,0)/n,my=arr.reduce((s,p)=>s+p.y,0)/n;
+    const num=arr.reduce((s,p)=>s+(p.x-mx)*(p.y-my),0);
+    const den=arr.reduce((s,p)=>s+(p.x-mx)**2,0)||1;
+    const a=num/den;return{a,b:my-a*mx};
+  };
+  const lo=linFit(loR),hi=linFit(hiR);
+  const work=pts.filter(p=>p.x>=T1&&p.x<=T4);
+  if(!work.length)return null;
+  if(type==='linear'){
+    const xL=(T1+T2)/2,xH=(T3+T4)/2,yL=lo.a*xL+lo.b,yH=hi.a*xH+hi.b;
+    return work.map(p=>{const f=Math.max(0,Math.min(1,(p.x-xL)/(xH-xL||1)));return{x:p.x,y:yL+(yH-yL)*f};});
+  }
+  // sigmoid
+  const N=work.length;const ci=new Float64Array(N);let acc=0;
+  for(let i=1;i<N;i++){acc+=Math.abs(work[i].y+work[i-1].y)/2*Math.abs(work[i].x-work[i-1].x);ci[i]=acc;}
+  const tot=ci[N-1]||1;
+  return work.map((p,i)=>{const w=ci[i]/tot;return{x:p.x,y:(lo.a*p.x+lo.b)*(1-w)+(hi.a*p.x+hi.b)*w};});
+}
+
+function calcDH(pts,blPts,scanRate){
+  if(!blPts||!blPts.length)return NaN;
+  // interpolate BL at each pt
+  const blX=blPts.map(p=>p.x),blY=blPts.map(p=>p.y);
+  const interp=x=>{
+    let lo=0,hi=blX.length-1;
+    while(lo<hi-1){const m=lo+hi>>1;if(blX[m]<=x)lo=m;else hi=m;}
+    const f=(x-blX[lo])/(blX[hi]-blX[lo]||1);
+    return blY[lo]+(blY[hi]-blY[lo])*f;
+  };
+  let area=0;
+  for(let i=1;i<pts.length;i++){
+    const dx=pts[i].x-pts[i-1].x;if(Math.abs(dx)<1e-9)continue;
+    area+=((pts[i-1].y-interp(pts[i-1].x))+(pts[i].y-interp(pts[i].x)))/2*dx;
+  }
+  return xAxis==='temp'?(area/scanRate*60):(area*60);
+}
+
+// ─── Peak detection ───────────────────────────────────────────────────────────
+function detectPeaks(pts){
+  const peaks=[];const W=Math.max(12,Math.floor(pts.length/40));
+  for(let i=W;i<pts.length-W;i++){
+    const v=pts[i].y;let isMin=true,isMax=true;
+    for(let j=i-W;j<=i+W;j++){if(j===i)continue;if(pts[j].y<=v)isMin=false;if(pts[j].y>=v)isMax=false;}
+    if((isMin||isMax)&&(!peaks.length||Math.abs(i-peaks[peaks.length-1].idx)>W*1.5))
+      peaks.push({idx:i,x:pts[i].x,y:pts[i].y,type:isMax?'max':'min'});
+  }
+  return peaks;
+}
+
+// ─── Analysis ─────────────────────────────────────────────────────────────────
+function runAnalysis(){
+  analysisResults=[];
+  files.forEach(f=>{
+    f.segments.filter(s=>s.analyze).forEach(s=>{
+      const pts=getPts(f,s,1); // full resolution for analysis
+      const scanRate=s.rate||15;
+      // peaks
+      const peaks=showPeaks?detectPeaks(getPts(f,s)):[];
+      if(s.bl){
+        const blPts=computeBL(pts,s.bl);
+        // integrate whole segment
+        const segDH=blPts?calcDH(pts.filter(p=>p.x>=s.bl.T1&&p.x<=s.bl.T4),blPts,scanRate):NaN;
+        // also find peaks in BL-subtracted region
+        const workPts=blPts?pts.filter(p=>p.x>=s.bl.T1&&p.x<=s.bl.T4):pts;
+        const wpks=detectPeaks(getPts(f,s)); // for display x values
+        wpks.forEach(pk=>{
+          // only keep peaks within BL range
+          if(s.bl&&(pk.x<s.bl.T1||pk.x>s.bl.T4))return;
+          analysisResults.push({fileId:f.id,fileName:f.name,color:f.color,
+            segNum:s.num,segDesc:shortDesc(s),segType:s.type,
+            peakX:pk.x,peakType:pk.type,scanRate,weight:f.weight,
+            bl:s.bl,pts,blPts,dh:segDH,blLabel:s.bl.type==='sigmoid'?'S字':'直線'});
+        });
+        if(!wpks.length){
+          // no peaks but BL set: record segment-level ΔH
+          analysisResults.push({fileId:f.id,fileName:f.name,color:f.color,
+            segNum:s.num,segDesc:shortDesc(s),segType:s.type,
+            peakX:null,peakType:null,scanRate,weight:f.weight,
+            bl:s.bl,pts,blPts,dh:segDH,blLabel:s.bl.type==='sigmoid'?'S字':'直線'});
+        }
+      }
+    });
+  });
+  renderResults();
+  renderChart();
+}
+
+function shortDesc(s){
+  if(s.type==='isothermal')return uiLang==='en'?`Step${s.num} Isothermal`:`Step${s.num} 等温`;
+  return `Step${s.num} ${(uiLang==='en'?STYPE_LABEL_EN:STYPE_LABEL)[s.type]||s.type} ${s.tmin.toFixed(0)}→${s.tmax.toFixed(0)}°C`;
+}
+
+// ─── Chart render ─────────────────────────────────────────────────────────────
+function renderChart(){
+  const datasets=[];
+  const rawDatasets=[];
+  const allPeakPts=[];
+  const allPeakPtsRaw=[];
+  const thermalDatasets=[];
+  const dscBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  const dscRawBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  const thermalBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+
+  files.forEach(f=>{
+    const isActive=f.id===activeId;
+    const visSegs=f.segments.filter(s=>s.visible);
+    visSegs.forEach((s)=>{
+      const segOffset=Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx);
+      const segGain=(Number.isFinite(s.yGain)&&s.yGain>0)?s.yGain:1;
+      const thermalPts=f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>({x:+r.time.toFixed(4),y:+r.temp.toFixed(3)}));
+      const segColor=STYPE_COLOR[s.type]||f.color;
+      thermalDatasets.push({
+        label:`Step${s.num} ${f.name.replace(/\.[^.]+$/,'')}`,
+        data:thermalPts,
+        borderColor:isActive?segColor:segColor+'77',
+        borderWidth:isActive?2.1:1.2,
+        pointRadius:0,
+        tension:0.08,
+        fill:false
+      });
+      thermalPts.forEach(p=>{
+        if(p.x<thermalBounds.xMin)thermalBounds.xMin=p.x;
+        if(p.x>thermalBounds.xMax)thermalBounds.xMax=p.x;
+        if(p.y<thermalBounds.yMin)thermalBounds.yMin=p.y;
+        if(p.y>thermalBounds.yMax)thermalBounds.yMax=p.y;
+      });
+
+      const pts=getPts(f,s);
+      const color=STYPE_COLOR[s.type]||f.color;
+      const baseColor=isActive?color:color+'77';
+      const lw=isActive?1.8:1.1;
+      const isSelectedSeg=isActive&&f.selectedSegIdx===s.idx;
+      const offsetPts=pts.map(p=>({x:p.x,y:+(p.y*segGain+segOffset).toFixed(5)}));
+      pts.forEach(p=>{
+        if(p.x<dscRawBounds.xMin)dscRawBounds.xMin=p.x;
+        if(p.x>dscRawBounds.xMax)dscRawBounds.xMax=p.x;
+        if(p.y<dscRawBounds.yMin)dscRawBounds.yMin=p.y;
+        if(p.y>dscRawBounds.yMax)dscRawBounds.yMax=p.y;
+      });
+      offsetPts.forEach(p=>{
+        if(p.x<dscBounds.xMin)dscBounds.xMin=p.x;
+        if(p.x>dscBounds.xMax)dscBounds.xMax=p.x;
+        if(p.y<dscBounds.yMin)dscBounds.yMin=p.y;
+        if(p.y>dscBounds.yMax)dscBounds.yMax=p.y;
+      });
+
+      datasets.push({
+        label:`Step${s.num} ${f.name.replace(/\.[^.]+$/,'')}`,
+        data:offsetPts,borderColor:isSelectedSeg?color:baseColor,
+        borderWidth:isSelectedSeg?2.2:lw,
+        pointRadius:0,tension:0.12,fill:false,
+        _meta:{fileId:f.id,segIdx:s.idx}
+      });
+      rawDatasets.push({
+        label:`Step${s.num} ${f.name.replace(/\.[^.]+$/,'')}`,
+        data:pts,borderColor:isSelectedSeg?color:baseColor,
+        borderWidth:isSelectedSeg?2.2:lw,
+        pointRadius:0,tension:0.12,fill:false,
+        _meta:{fileId:f.id,segIdx:s.idx}
+      });
+
+      // BL curve for this segment
+      if(s.bl){
+        const blPts=computeBL(pts,s.bl);
+        if(blPts){
+          const offsetBlPts=blPts.map(p=>({x:p.x,y:+(p.y*segGain+segOffset).toFixed(5)}));
+          datasets.push({
+            label:`BL Step${s.num}`,data:offsetBlPts,
+            borderColor:color,borderWidth:1.3,borderDash:[5,4],
+            pointRadius:0,tension:0,fill:false,_isBL:true
+          });
+          rawDatasets.push({
+            label:`BL Step${s.num}`,data:blPts,
+            borderColor:color,borderWidth:1.3,borderDash:[5,4],
+            pointRadius:0,tension:0,fill:false,_isBL:true
+          });
+        }
+      }
+
+      // peaks
+      if(showPeaks&&isActive){
+        detectPeaks(pts).forEach(pk=>{
+          allPeakPts.push({x:pk.x,y:+(pk.y*segGain+segOffset).toFixed(5),color});
+          allPeakPtsRaw.push({x:pk.x,y:+pk.y.toFixed(5),color});
+        });
+      }
+    });
+  });
+
+  // click preview dots
+  if(clickMode&&clickSegId!==null){
+    const ids=['bT1','bT2','bT3','bT4'];
+    const previewX=ids.slice(0,clickStep).map(id=>{
+      const v=parseFloat(document.getElementById(`${id}-${clickSegId}`)?.value);
+      return isNaN(v)?null:v;
+    }).filter(v=>v!==null);
+    if(previewX.length){
+      const af=getAF();
+      const s=af?.segments.find(sg=>sg.idx===clickSegId);
+      const segOffset=Number.isFinite(s?.dOffset)?s.dOffset:defaultOffsetForIndex(s?.idx||0);
+      const segGain=(Number.isFinite(s?.yGain)&&s.yGain>0)?s.yGain:1;
+      const pts=s?getPts(af,s):[];
+      const previewPts=previewX.map(x=>{
+        const near=pts.reduce((b,p)=>Math.abs(p.x-x)<Math.abs(b.x-x)?p:b,pts[0]||{x,y:0});
+        return{x,y:+(near.y*segGain+segOffset).toFixed(5)};
+      });
+      if(previewPts.length)datasets.push({
+        label:'BL指定点',type:'scatter',data:previewPts,
+        pointBackgroundColor:'#f59f00',pointBorderColor:'#fff',pointBorderWidth:1.5,
+        pointRadius:8,showLine:false,_isClick:true
+      });
+    }
+  }
+
+  if(allPeakPtsRaw.length)rawDatasets.push({
+    label:'ピーク',type:'scatter',data:allPeakPtsRaw,
+    pointBackgroundColor:allPeakPtsRaw.map(p=>p.color),
+    pointBorderColor:'#fff',pointBorderWidth:1.5,pointRadius:7,showLine:false,_isPeak:true
+  });
+  if(allPeakPts.length)datasets.push({
+    label:'ピーク',type:'scatter',data:allPeakPts,
+    pointBackgroundColor:allPeakPts.map(p=>p.color),
+    pointBorderColor:'#fff',pointBorderWidth:1.5,pointRadius:7,showLine:false,_isPeak:true
+  });
+
+  if(chart)chart.destroy();
+  if(chartRaw)chartRaw.destroy();
+  if(thermalChart)thermalChart.destroy();
+  if(!isFinite(dscBounds.xMin)){dscBounds.xMin=0;dscBounds.xMax=1;dscBounds.yMin=0;dscBounds.yMax=1;}
+  if(!isFinite(dscRawBounds.xMin)){dscRawBounds.xMin=0;dscRawBounds.xMax=1;dscRawBounds.yMin=0;dscRawBounds.yMax=1;}
+  if(!isFinite(thermalBounds.xMin)){thermalBounds.xMin=0;thermalBounds.xMax=1;thermalBounds.yMin=0;thermalBounds.yMax=1;}
+  lastDscBounds={...dscBounds};
+  lastDscRawBounds={...dscRawBounds};
+  lastThermalBounds={...thermalBounds};
+  syncViewInputs(dscBounds,thermalBounds);
+
+  thermalChart=new Chart(document.getElementById('thermalCvs'),{
+    type:'line',
+    data:{datasets:thermalDatasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:100},
+      interaction:{mode:'nearest',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{enabled:hoverEnabled,callbacks:{
+          title:items=>{
+            if(hoverMode==='temp')return '';
+            const x=items?.[0]?.raw?.x ?? items?.[0]?.parsed?.x;
+            return `t = ${(+x).toFixed(3)} min`;
+          },
+          label:item=>{
+            if(hoverMode==='temp')return `Temp: ${(+item.parsed.y).toFixed(2)} °C`;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(2)} °C`;
+          }
+        }}
+      },
+      scales:{
+        x:{type:'linear',
+          min:thermalView.xMin??undefined,max:thermalView.xMax??undefined,
+          title:{display:true,text:'時間 (min)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},maxTicksLimit:8}},
+        y:{min:thermalView.yMin??undefined,max:thermalView.yMax??undefined,
+          title:{display:true,text:'温度 (°C)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10}}}
+      }
+    }
+  });
+
+  chart=new Chart(document.getElementById('cvs'),{
+    type:'line',data:{datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:100},
+      onClick:handleChartClick,
+      interaction:{mode:'nearest',intersect:false},
+      plugins:{
+        legend:{
+          display:files.length>1,position:'top',
+          labels:{boxWidth:20,boxHeight:2,font:{size:11},color:'#aaa',
+            filter:i=>!i.text.startsWith('BL ')&&i.text!=='ピーク'&&i.text!=='BL指定点'}
+        },
+        tooltip:{enabled:hoverEnabled,callbacks:{
+          title:items=>{
+            const x=+items[0].parsed.x;
+            if(hoverMode==='temp'){
+              const temp=tempFromMetaAtX(items[0].dataset._meta,x);
+              return temp===null?'':`T = ${temp.toFixed(2)} °C`;
+            }
+            return xAxis==='temp'?`T = ${x.toFixed(2)} °C`:`t = ${x.toFixed(3)} min`;
+          },
+          label:item=>{
+            if(item.dataset._isBL||item.dataset._isPeak||item.dataset._isClick)return null;
+            if(hoverMode==='temp')return null;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`;
+          }
+        }}
+      },
+      scales:{
+        x:{type:'linear',
+          min:dscView.xMin??undefined,max:dscView.xMax??undefined,
+          title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:12},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:11},maxTicksLimit:12}},
+        y:{min:dscView.yMin??undefined,max:dscView.yMax??undefined,
+          title:{display:true,text:'熱流 (mW/mg)',font:{size:12},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:11},callback:v=>v.toFixed(3)}}
+      }
+    }
+  });
+  chartRaw=new Chart(document.getElementById('cvsRaw'),{
+    type:'line',data:{datasets:rawDatasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:100},
+      interaction:{mode:'nearest',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{enabled:hoverEnabled,callbacks:{
+          title:items=>{
+            const x=+items[0].parsed.x;
+            if(hoverMode==='temp'){
+              const temp=tempFromMetaAtX(items[0].dataset._meta,x);
+              return temp===null?'':`T = ${temp.toFixed(2)} °C`;
+            }
+            return xAxis==='temp'?`T = ${x.toFixed(2)} °C`:`t = ${x.toFixed(3)} min`;
+          },
+          label:item=>{
+            if(item.dataset._isBL||item.dataset._isPeak)return null;
+            if(hoverMode==='temp')return null;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`;
+          }
+        }}
+      },
+      scales:{
+        x:{type:'linear',
+          min:dscRawView.xMin??undefined,max:dscRawView.xMax??undefined,
+          title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},maxTicksLimit:12}},
+        y:{min:dscRawView.yMin??undefined,max:dscRawView.yMax??undefined,
+          title:{display:true,text:'熱流 (mW/mg)',font:{size:11},color:'#aaa'},
+          grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},callback:v=>v.toFixed(3)}}
+      }
+    }
+  });
+  syncModeButtons();
+  bindWheelZoom(document.getElementById('cvs'),()=>chart,dscView,dscBounds,()=>chartMode.dsc);
+  bindWheelZoom(document.getElementById('cvsRaw'),()=>chartRaw,dscRawView,dscRawBounds,()=>chartMode.dsc);
+  bindWheelZoom(document.getElementById('thermalCvs'),()=>thermalChart,thermalView,thermalBounds,()=>chartMode.thermal);
+  bindDragZoom(document.getElementById('cvs'),()=>chart,dscView,dscBounds,()=>chartMode.dsc,document.getElementById('dscZoomBox'));
+  bindDragZoom(document.getElementById('cvsRaw'),()=>chartRaw,dscRawView,dscRawBounds,()=>chartMode.dsc,document.getElementById('dscRawZoomBox'));
+  bindDragZoom(document.getElementById('thermalCvs'),()=>thermalChart,thermalView,thermalBounds,()=>chartMode.thermal,document.getElementById('thZoomBox'));
+}
+
+// ─── Results ──────────────────────────────────────────────────────────────────
+function renderResults(){
+  const body=document.getElementById('rBody');body.innerHTML='';
+  if(!analysisResults.length){document.getElementById('rSection').style.display='none';return;}
+  const unit=xAxis==='temp'?'°C':'min';
+  analysisResults.forEach(r=>{
+    const hasPeak=r.peakX!==null;
+    const kind=r.segType==='heating'
+      ?(r.peakType==='min'?(uiLang==='en'?'Melting (endothermic)':'融解（吸熱）'):(uiLang==='en'?'Crystallization (exothermic)':'結晶化（発熱）'))
+      :r.segType==='cooling'
+        ?(r.peakType==='max'?(uiLang==='en'?'Crystallization (exothermic)':'結晶化（発熱）'):(uiLang==='en'?'Melting (endothermic)':'融解（吸熱）'))
+        :'—';
+    const bc=kind.startsWith('Melting')||kind.startsWith('融解')?'melt':'cryst';
+    // onset/end from BL range
+    const onset=r.bl?r.bl.T1.toFixed(2):'—';
+    const tend=r.bl?r.bl.T4.toFixed(2):'—';
+    body.innerHTML+=`<tr>
+      <td><span style="color:${r.color};font-size:14px">●</span></td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis">${r.fileName.replace(/\.[^.]+$/,'')}</td>
+      <td>${r.segDesc}</td>
+      <td>${hasPeak?`<span class="badge ${bc}">${kind}</span>`:(uiLang==='en'?'(No peak)':'（ピークなし）')}</td>
+      <td>${onset} ${unit}</td>
+      <td>${hasPeak?r.peakX.toFixed(2)+' '+unit:'—'}</td>
+      <td>${tend} ${unit}</td>
+      <td>${isNaN(r.dh)?'—':Math.abs(r.dh).toFixed(2)}</td>
+      <td style="color:#1D9E75">${r.blLabel}</td>
+    </tr>`;
+  });
+  document.getElementById('rSection').style.display='block';
+}
+
+// ─── CSV ──────────────────────────────────────────────────────────────────────
+function exportCSV(){
+  if(!analysisResults.length){alert(t('runAnalysisFirst'));return;}
+  let csv='ファイル,Step,種別,Tonset,Tpeak,Tend,ΔH_Jg,BL種\n';
+  document.getElementById('rBody').querySelectorAll('tr').forEach(tr=>{
+    const tds=[...tr.querySelectorAll('td')].slice(1).map(td=>td.textContent.trim());
+    csv+=tds.join(',')+'\n';
+  });
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download='DSC_v6.csv';a.click();
+}
+
+initShortcuts();
+syncLayoutUI();
+applyLanguage();
+</script>
+</body>
+</html>

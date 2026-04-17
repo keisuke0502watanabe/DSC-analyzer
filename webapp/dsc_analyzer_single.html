@@ -187,7 +187,7 @@ tr:hover td{background:#fafaf8}
       <button class="btn on" id="btnHF" onclick="setY('hf')">Corrected</button>
       <button class="btn" id="btnUHF" onclick="setY('uhf')">Raw</button>
     </div>
-    <div class="lbl" id="dscSpanLbl">Display Span (DSC)</div>
+    <div class="lbl" id="dscSpanLbl">Display Span (DSC offset)</div>
     <div class="bl-grid">
       <div class="blf"><label>X最小</label><input type="number" id="dscXMin" step="0.1"></div>
       <div class="blf"><label>X最大</label><input type="number" id="dscXMax" step="0.1"></div>
@@ -195,8 +195,19 @@ tr:hover td{background:#fafaf8}
       <div class="blf"><label>Y最大</label><input type="number" id="dscYMax" step="0.01"></div>
     </div>
     <div class="btn-row">
-      <button class="btn" id="applyDscSpanBtn" onclick="applyViewSpan('dsc')">Apply DSC span</button>
-      <button class="btn" id="resetDscSpanBtn" onclick="resetViewSpan('dsc')">Reset DSC</button>
+      <button class="btn" id="applyDscSpanBtn" onclick="applyViewSpan('dsc')">Apply DSC offset span</button>
+      <button class="btn" id="resetDscSpanBtn" onclick="resetViewSpan('dsc')">Reset DSC offset</button>
+    </div>
+    <div class="lbl" id="dscRawSpanLbl">Display Span (DSC without offset)</div>
+    <div class="bl-grid">
+      <div class="blf"><label>X最小</label><input type="number" id="dscRawXMin" step="0.1"></div>
+      <div class="blf"><label>X最大</label><input type="number" id="dscRawXMax" step="0.1"></div>
+      <div class="blf"><label>Y最小</label><input type="number" id="dscRawYMin" step="0.01"></div>
+      <div class="blf"><label>Y最大</label><input type="number" id="dscRawYMax" step="0.01"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="applyDscRawSpanBtn" onclick="applyViewSpan('dscRaw')">Apply DSC without offset span</button>
+      <button class="btn" id="resetDscRawSpanBtn" onclick="resetViewSpan('dscRaw')">Reset DSC without offset</button>
     </div>
     <div class="lbl" id="thSpanLbl">Display Span (Thermal)</div>
     <div class="bl-grid">
@@ -216,6 +227,20 @@ tr:hover td{background:#fafaf8}
       <button class="btn" onclick="allScale('both')" style="margin-left:auto">All Scale</button>
       <button class="btn" id="allDscBtn" onclick="allScale('dsc')">DSC only</button>
       <button class="btn" id="allThermalBtn" onclick="allScale('thermal')">Thermal only</button>
+    </div>
+    <div class="lbl" id="hoverLbl">Hover Tooltip</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnHoverOn" onclick="setHoverEnabled(true)">ON</button>
+      <button class="btn" id="btnHoverOff" onclick="setHoverEnabled(false)">OFF</button>
+      <button class="btn on" id="btnHoverFull" onclick="setHoverMode('full')" style="margin-left:auto">Full</button>
+      <button class="btn" id="btnHoverTemp" onclick="setHoverMode('temp')">Temp only</button>
+    </div>
+    <div class="lbl" id="zoomTargetLbl">Range Zoom Target</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnZoomTargetDscAdj" onclick="setZoomRectTarget('dscAdj')">DSC offset</button>
+      <button class="btn" id="btnZoomTargetDscRaw" onclick="setZoomRectTarget('dscRaw')">DSC without offset</button>
+      <button class="btn" id="btnZoomTargetThermal" onclick="setZoomRectTarget('thermal')">Thermal</button>
+      <button class="btn" id="btnZoomTargetAll" onclick="setZoomRectTarget('all')">All</button>
     </div>
     <div class="lbl" id="graphLayoutLbl">Graph Layout</div>
     <div class="btn-row">
@@ -270,7 +295,7 @@ tr:hover td{background:#fafaf8}
             <div class="seg-range-inline">
               <span id="offsetEvenLbl" style="font-size:10px;color:#999">Offset Even:</span>
               <input type="number" id="evenOffStart" step="0.05" value="0" title="Start offset">
-              <input type="number" id="evenOffStep" step="0.05" value="0.1" title="Step">
+              <input type="number" id="evenOffStep" step="0.05" value="-15" title="Step">
               <button class="btn" id="applyEvenOffBtn" style="font-size:10px;padding:1px 6px" onclick="applyEvenOffsetFromTable()">Apply</button>
               <button class="btn" id="applyAllSegBtn" style="font-size:10px;padding:1px 6px" onclick="applyAllSegRangeFromTable()">Apply all</button>
             </div>
@@ -305,7 +330,16 @@ tr:hover td{background:#fafaf8}
       </div>
       <div class="dsc-stack">
         <div class="chart-pane dsc-small">
-          <div class="chart-label" id="dscRawLabel">DSC (no offset)</div>
+          <div class="chart-label" id="dscRawLabel">DSC (without offset)</div>
+          <div class="chart-tools">
+            <button class="tool-btn on" id="dscRawModeBtn" title="ズーム操作" onclick="toggleGraphMode('dsc')">🔍</button>
+            <button class="tool-btn" title="全体表示に戻す" onclick="allScale('dscRaw')">⤢</button>
+            <button class="tool-btn" title="X拡大" onclick="zoomByButton('dscRaw','x',0.85)">＋</button>
+            <button class="tool-btn" title="X縮小" onclick="zoomByButton('dscRaw','x',1.18)">－</button>
+            <button class="tool-btn" title="Y拡大" onclick="zoomByButton('dscRaw','y',0.85)">↕＋</button>
+            <button class="tool-btn" title="Y縮小" onclick="zoomByButton('dscRaw','y',1.18)">↕－</button>
+          </div>
+          <div class="zoom-box" id="dscRawZoomBox"></div>
           <canvas id="cvsRaw" role="img" aria-label="DSC original curve"></canvas>
         </div>
         <div class="chart-pane dsc-small">
@@ -363,12 +397,17 @@ let chart=null, chartRaw=null, thermalChart=null;
 let clickMode=false, clickStep=0, clickSegId=null;
 let nextFid=1;
 let analysisResults=[];
-let dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+let dscView={xMin:null,xMax:null,yMin:null,yMax:null};      // with offset
+let dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};   // no offset
 let thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
 let suppressChartClick=false;
 let chartMode={dsc:'zoom',thermal:'zoom'}; // per graph: 'zoom' or 'lock'
 let lastDscBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let lastDscRawBounds={xMin:0,xMax:1,yMin:0,yMax:1};
 let lastThermalBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let hoverEnabled=true;
+let hoverMode='full'; // full|temp
+let zoomRectTarget='dscAdj'; // dscAdj|dscRaw|thermal|all
 let graphLayout='row'; // row|col
 let graphRatio=35; // thermal share (%)
 let segTablePos='bottom'; // left|bottom
@@ -417,6 +456,10 @@ function t(key,vars={}){
   let s=(I18N[uiLang]&&I18N[uiLang][key])||I18N.en[key]||key;
   Object.keys(vars).forEach(k=>{s=s.replace(`{${k}}`,vars[k]);});
   return s;
+}
+
+function defaultOffsetForIndex(idx){
+  return -15*(Number.isFinite(idx)?idx:0);
 }
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────
@@ -542,7 +585,7 @@ function assignSegments(rows,methodSteps){
       bl:null,
       visible:true,
       analyze:true,
-      dOffset:0,
+      dOffset:defaultOffsetForIndex(si),
       yGain:1,
     });
     cursor=endIdx+1;
@@ -573,7 +616,7 @@ function autoSegments(rows){
         const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
         segs.push({num:idx+1,type:tp,idx:idx++,start:ss,end:i-1,rate:15,duration:null,fromT:null,toT:null,
           tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),
-          tStart:rows[ss].time,tEnd:rows[i-1].time,bl:null,visible:true,analyze:true,dOffset:0,yGain:1});
+          tStart:rows[ss].time,tEnd:rows[i-1].time,bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(idx),yGain:1});
       }
       ss=i;dir=nd;
     }
@@ -582,7 +625,7 @@ function autoSegments(rows){
     const sl=rows.slice(ss);const tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
     segs.push({num:idx+1,type:tp,idx:idx,start:ss,end:rows.length-1,rate:15,duration:null,fromT:null,toT:null,
       tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),
-      tStart:rows[ss].time,tEnd:rows[rows.length-1].time,bl:null,visible:true,analyze:true,dOffset:0,yGain:1});
+      tStart:rows[ss].time,tEnd:rows[rows.length-1].time,bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(idx),yGain:1});
   }
   return segs;
 }
@@ -687,7 +730,7 @@ function renderSegBody(s,af){
   const hasBL=!!s.bl;
   const bl=s.bl||{T1:'',T2:'',T3:'',T4:'',type:'sigmoid'};
   const xUnit=xAxis==='temp'?'°C':'min';
-  const dOffset=Number.isFinite(s.dOffset)?s.dOffset:0;
+  const dOffset=Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx);
   const yGain=Number.isFinite(s.yGain)?s.yGain:1;
   return `
     <div class="seg-stats">
@@ -843,7 +886,7 @@ function addSegmentByPrompt(){
     duration:tp==='isothermal'?(af.data[endIdx].time-af.data[startIdx].time):null,
     fromT:af.data[startIdx].temp,
     toT:af.data[endIdx].temp,
-    bl:null,visible:true,analyze:true,dOffset:0,yGain:1
+    bl:null,visible:true,analyze:true,dOffset:defaultOffsetForIndex(af.segments.length),yGain:1
   };
   recalcSegmentMeta(af,seg);
   af.segments.push(seg);
@@ -918,7 +961,7 @@ function renderSegRangeTable(){
       <td>${s.num}</td>
       <td><input type="number" id="trTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></td>
       <td><input type="number" id="trTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></td>
-      <td><input type="number" id="trOff-${s.idx}" value="${Number.isFinite(s.dOffset)?s.dOffset:0}" step="0.05" oninput="setSegOffset(${s.idx},this.value,false)"></td>
+      <td><input type="number" id="trOff-${s.idx}" value="${Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx)}" step="0.05" oninput="setSegOffset(${s.idx},this.value,false)"></td>
       <td><input type="number" id="trGain-${s.idx}" value="${Number.isFinite(s.yGain)?s.yGain:1}" step="0.05" min="0.05" oninput="setSegGain(${s.idx},this.value,false)"></td>
       <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">${uiLang==='en'?'Apply':'適用'}</button></td>`;
     body.appendChild(tr);
@@ -963,7 +1006,7 @@ function applyAllSegRangeFromTable(){
       s.tEnd=af.data[endIdx].time;
       s.tmin=Math.min(...slice.map(r=>r.temp));
       s.tmax=Math.max(...slice.map(r=>r.temp));
-      s.dOffset=isNaN(dOff)?0:dOff;
+      s.dOffset=isNaN(dOff)?defaultOffsetForIndex(s.idx):dOff;
       s.yGain=(isNaN(dGain)||dGain<=0)?1:dGain;
       okCount++;
     }
@@ -982,7 +1025,7 @@ function setSegOffset(idx,v,syncTable=true){
   const af=getAF();if(!af)return;
   const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
   const n=parseFloat(v);
-  s.dOffset=isNaN(n)?0:n;
+  s.dOffset=isNaN(n)?defaultOffsetForIndex(idx):n;
   if(syncTable){
     const tableInput=document.getElementById(`trOff-${idx}`);
     if(tableInput)tableInput.value=String(s.dOffset);
@@ -1013,7 +1056,7 @@ function applyEvenOffsetFromTable(){
   const base=parseFloat(document.getElementById('evenOffStart')?.value);
   const step=parseFloat(document.getElementById('evenOffStep')?.value);
   const start=isNaN(base)?0:base;
-  const pitch=isNaN(step)?0:step;
+  const pitch=isNaN(step)?-15:step;
   af.segments.forEach((s,i)=>{
     s.dOffset=+(start+pitch*i).toFixed(5);
   });
@@ -1120,6 +1163,10 @@ function syncViewInputs(dscBounds,thermalBounds){
   setInputVal('dscXMax',dscView.xMax??dscBounds.xMax,3);
   setInputVal('dscYMin',dscView.yMin??dscBounds.yMin,4);
   setInputVal('dscYMax',dscView.yMax??dscBounds.yMax,4);
+  setInputVal('dscRawXMin',dscRawView.xMin??lastDscRawBounds.xMin,3);
+  setInputVal('dscRawXMax',dscRawView.xMax??lastDscRawBounds.xMax,3);
+  setInputVal('dscRawYMin',dscRawView.yMin??lastDscRawBounds.yMin,4);
+  setInputVal('dscRawYMax',dscRawView.yMax??lastDscRawBounds.yMax,4);
   setInputVal('thXMin',thermalView.xMin??thermalBounds.xMin,3);
   setInputVal('thXMax',thermalView.xMax??thermalBounds.xMax,3);
   setInputVal('thYMin',thermalView.yMin??thermalBounds.yMin,3);
@@ -1139,6 +1186,11 @@ function applyViewSpan(which){
     const yr=parseRange('dscYMin','dscYMax');
     if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
     dscView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
+  }else if(which==='dscRaw'){
+    const xr=parseRange('dscRawXMin','dscRawXMax');
+    const yr=parseRange('dscRawYMin','dscRawYMax');
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
+    dscRawView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
   }else{
     const xr=parseRange('thXMin','thXMax');
     const yr=parseRange('thYMin','thYMax');
@@ -1150,6 +1202,7 @@ function applyViewSpan(which){
 
 function resetViewSpan(which){
   if(which==='dsc')dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  else if(which==='dscRaw')dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};
   else thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
   renderChart();
 }
@@ -1158,7 +1211,16 @@ function syncModeButtons(){
   document.getElementById('btnZoomMode')?.classList.toggle('on',chartMode.dsc==='zoom'&&chartMode.thermal==='zoom');
   document.getElementById('btnLockMode')?.classList.toggle('on',chartMode.dsc==='lock'&&chartMode.thermal==='lock');
   document.getElementById('dscModeBtn')?.classList.toggle('on',chartMode.dsc==='zoom');
+  document.getElementById('dscRawModeBtn')?.classList.toggle('on',chartMode.dsc==='zoom');
   document.getElementById('thModeBtn')?.classList.toggle('on',chartMode.thermal==='zoom');
+  document.getElementById('btnHoverOn')?.classList.toggle('on',hoverEnabled);
+  document.getElementById('btnHoverOff')?.classList.toggle('on',!hoverEnabled);
+  document.getElementById('btnHoverFull')?.classList.toggle('on',hoverMode==='full');
+  document.getElementById('btnHoverTemp')?.classList.toggle('on',hoverMode==='temp');
+  document.getElementById('btnZoomTargetDscAdj')?.classList.toggle('on',zoomRectTarget==='dscAdj');
+  document.getElementById('btnZoomTargetDscRaw')?.classList.toggle('on',zoomRectTarget==='dscRaw');
+  document.getElementById('btnZoomTargetThermal')?.classList.toggle('on',zoomRectTarget==='thermal');
+  document.getElementById('btnZoomTargetAll')?.classList.toggle('on',zoomRectTarget==='all');
 }
 
 function setChartMode(mode,which='both'){
@@ -1166,6 +1228,38 @@ function setChartMode(mode,which='both'){
   if(which==='both'||which==='dsc')chartMode.dsc=m;
   if(which==='both'||which==='thermal')chartMode.thermal=m;
   syncModeButtons();
+}
+
+function setHoverEnabled(v){
+  hoverEnabled=!!v;
+  syncModeButtons();
+  renderChart();
+}
+
+function setHoverMode(mode){
+  hoverMode=mode==='temp'?'temp':'full';
+  syncModeButtons();
+  renderChart();
+}
+
+function setZoomRectTarget(target){
+  zoomRectTarget=(target==='dscRaw'||target==='thermal'||target==='all')?target:'dscAdj';
+  syncModeButtons();
+}
+
+function tempFromMetaAtX(meta,xVal){
+  const f=getF(meta?.fileId);
+  if(!f)return null;
+  const s=f.segments.find(seg=>seg.idx===meta?.segIdx);
+  if(!s)return null;
+  if(xAxis==='temp')return xVal;
+  const i0=Math.max(0,s.start), i1=Math.min(f.data.length-1,s.end);
+  let best=f.data[i0], bd=Math.abs(best.time-xVal);
+  for(let i=i0+1;i<=i1;i++){
+    const d=Math.abs(f.data[i].time-xVal);
+    if(d<bd){bd=d;best=f.data[i];}
+  }
+  return best?.temp ?? null;
 }
 
 function syncLayoutUI(){
@@ -1224,15 +1318,26 @@ function applyLanguage(){
   set('btnTemp','Temperature (degC)','温度 (°C)');
   set('btnTime','Time (min)','時間 (min)');
   set('btnHF','Corrected','補正後');
-  set('dscSpanLbl','Display Span (DSC)','表示スパン（DSC）');
-  set('applyDscSpanBtn','Apply DSC span','DSCスパン適用');
-  set('resetDscSpanBtn','Reset DSC','DSCリセット');
+  set('dscSpanLbl','Display Span (DSC offset)','表示スパン（DSCオフセット）');
+  set('applyDscSpanBtn','Apply DSC offset span','DSCオフセット適用');
+  set('resetDscSpanBtn','Reset DSC offset','DSCオフセットリセット');
+  set('dscRawSpanLbl','Display Span (DSC without offset)','表示スパン（DSCオフセットなし）');
+  set('applyDscRawSpanBtn','Apply DSC without offset span','DSCオフセットなし適用');
+  set('resetDscRawSpanBtn','Reset DSC without offset','DSCオフセットなしリセット');
   set('thSpanLbl','Display Span (Thermal)','表示スパン（Thermal）');
   set('applyThSpanBtn','Apply Thermal span','Thermalスパン適用');
   set('resetThSpanBtn','Reset Thermal','Thermalリセット');
   set('graphModeLbl','Graph Interaction Mode','グラフ操作モード');
+  set('hoverLbl','Hover Tooltip','マウスオーバー');
   set('btnZoomMode','Zoom','ズーム操作');
   set('btnLockMode','Lock','固定');
+  set('btnHoverFull','Full','通常');
+  set('btnHoverTemp','Temp only','温度のみ');
+  set('zoomTargetLbl','Range Zoom Target','範囲ズーム対象');
+  set('btnZoomTargetDscAdj','DSC offset','DSCオフセット');
+  set('btnZoomTargetDscRaw','DSC without offset','DSCオフセットなし');
+  set('btnZoomTargetThermal','Thermal','熱履歴');
+  set('btnZoomTargetAll','All','全て');
   set('allDscBtn','DSC only','DSCのみ');
   set('allThermalBtn','Thermal only','Thermalのみ');
   set('graphLayoutLbl','Graph Layout','グラフ配置');
@@ -1257,7 +1362,7 @@ function applyLanguage(){
   set('segEndHead','End','終了');
   set('segOffsetHead','Offset','オフセット');
   set('segGainHead','Gain','倍率');
-  set('dscRawLabel','DSC (no offset)','DSC（オフセットなし）');
+  set('dscRawLabel','DSC (without offset)','DSC（オフセットなし）');
   set('dscAdjLabel','DSC (offset/gain applied)','DSC（オフセット/倍率適用）');
   set('cfoot','Please load files','ファイルを読み込んでください');
   set('resultsTitle','Results','解析結果');
@@ -1279,16 +1384,18 @@ function toggleGraphMode(which){
 
 function allScale(which){
   if(which==='both'||which==='dsc')dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  if(which==='both'||which==='dsc'||which==='dscRaw')dscRawView={xMin:null,xMax:null,yMin:null,yMax:null};
   if(which==='both'||which==='thermal')thermalView={xMin:null,xMax:null,yMin:null,yMax:null};
   renderChart();
 }
 
 function zoomByButton(which,axis,factor){
-  const isDsc=which==='dsc';
-  const ch=isDsc?chart:thermalChart;
+  const isDsc=which==='dsc'||which==='dscRaw';
+  const isRaw=which==='dscRaw';
+  const ch=isRaw?chartRaw:(isDsc?chart:thermalChart);
   if(!ch)return;
-  const view=isDsc?dscView:thermalView;
-  const bounds=isDsc?lastDscBounds:lastThermalBounds;
+  const view=isRaw?dscRawView:(isDsc?dscView:thermalView);
+  const bounds=isRaw?lastDscRawBounds:(isDsc?lastDscBounds:lastThermalBounds);
   const sx=ch.scales.x, sy=ch.scales.y;
   if(axis==='x'){
     const center=(sx.min+sx.max)/2;
@@ -1425,10 +1532,38 @@ function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl){
     const x1=sx.getValueForPixel(st.sx), x2=sx.getValueForPixel(e.offsetX);
     const y1=sy.getValueForPixel(st.sy), y2=sy.getValueForPixel(e.offsetY);
     if(!isFinite(x1)||!isFinite(x2)||!isFinite(y1)||!isFinite(y2))return;
-    view.xMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);
-    view.xMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);
-    view.yMin=clamp(Math.min(y1,y2),bounds.yMin,bounds.yMax);
-    view.yMax=clamp(Math.max(y1,y2),bounds.yMin,bounds.yMax);
+    const nxMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);
+    const nxMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);
+    const nyMin=clamp(Math.min(y1,y2),bounds.yMin,bounds.yMax);
+    const nyMax=clamp(Math.max(y1,y2),bounds.yMin,bounds.yMax);
+    const applyToDscAdj=zoomRectTarget==='dscAdj'||zoomRectTarget==='all';
+    const applyToDscRaw=zoomRectTarget==='dscRaw'||zoomRectTarget==='all';
+    // Thermal X-axis is always time. Cross-applying from DSC to thermal only makes sense in time mode.
+    const applyToThermal=(zoomRectTarget==='thermal'||zoomRectTarget==='all')&&(view===thermalView||xAxis==='time');
+    if(view===thermalView){
+      if(applyToThermal){
+        thermalView.xMin=nxMin;thermalView.xMax=nxMax;thermalView.yMin=nyMin;thermalView.yMax=nyMax;
+      }
+      if(applyToDscAdj){
+        dscView.xMin=nxMin;dscView.xMax=nxMax;dscView.yMin=nyMin;dscView.yMax=nyMax;
+      }
+      if(applyToDscRaw){
+        dscRawView.xMin=nxMin;dscRawView.xMax=nxMax;dscRawView.yMin=nyMin;dscRawView.yMax=nyMax;
+      }
+    }else{
+      const isAdj=view===dscView;
+      const isRaw=view===dscRawView;
+      if((isAdj&&applyToDscAdj)||(isRaw&&applyToDscRaw)||(zoomRectTarget==='all')){
+        view.xMin=nxMin;view.xMax=nxMax;view.yMin=nyMin;view.yMax=nyMax;
+      }
+      if(zoomRectTarget==='all'){
+        if(isAdj){dscRawView.xMin=nxMin;dscRawView.xMax=nxMax;dscRawView.yMin=nyMin;dscRawView.yMax=nyMax;}
+        if(isRaw){dscView.xMin=nxMin;dscView.xMax=nxMax;dscView.yMin=nyMin;dscView.yMax=nyMax;}
+      }
+      if(applyToThermal){
+        thermalView.xMin=nxMin;thermalView.xMax=nxMax;thermalView.yMin=nyMin;thermalView.yMax=nyMax;
+      }
+    }
     suppressChartClick=true;
     renderChart();
   });
@@ -1554,13 +1689,14 @@ function renderChart(){
   const allPeakPtsRaw=[];
   const thermalDatasets=[];
   const dscBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  const dscRawBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
   const thermalBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
 
   files.forEach(f=>{
     const isActive=f.id===activeId;
     const visSegs=f.segments.filter(s=>s.visible);
     visSegs.forEach((s)=>{
-      const segOffset=Number.isFinite(s.dOffset)?s.dOffset:0;
+      const segOffset=Number.isFinite(s.dOffset)?s.dOffset:defaultOffsetForIndex(s.idx);
       const segGain=(Number.isFinite(s.yGain)&&s.yGain>0)?s.yGain:1;
       const thermalPts=f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>({x:+r.time.toFixed(4),y:+r.temp.toFixed(3)}));
       const segColor=STYPE_COLOR[s.type]||f.color;
@@ -1587,12 +1723,14 @@ function renderChart(){
       const isSelectedSeg=isActive&&f.selectedSegIdx===s.idx;
       const offsetPts=pts.map(p=>({x:p.x,y:+(p.y*segGain+segOffset).toFixed(5)}));
       pts.forEach(p=>{
-        if(p.x<dscBounds.xMin)dscBounds.xMin=p.x;
-        if(p.x>dscBounds.xMax)dscBounds.xMax=p.x;
-        if(p.y<dscBounds.yMin)dscBounds.yMin=p.y;
-        if(p.y>dscBounds.yMax)dscBounds.yMax=p.y;
+        if(p.x<dscRawBounds.xMin)dscRawBounds.xMin=p.x;
+        if(p.x>dscRawBounds.xMax)dscRawBounds.xMax=p.x;
+        if(p.y<dscRawBounds.yMin)dscRawBounds.yMin=p.y;
+        if(p.y>dscRawBounds.yMax)dscRawBounds.yMax=p.y;
       });
       offsetPts.forEach(p=>{
+        if(p.x<dscBounds.xMin)dscBounds.xMin=p.x;
+        if(p.x>dscBounds.xMax)dscBounds.xMax=p.x;
         if(p.y<dscBounds.yMin)dscBounds.yMin=p.y;
         if(p.y>dscBounds.yMax)dscBounds.yMax=p.y;
       });
@@ -1650,7 +1788,7 @@ function renderChart(){
     if(previewX.length){
       const af=getAF();
       const s=af?.segments.find(sg=>sg.idx===clickSegId);
-      const segOffset=Number.isFinite(s?.dOffset)?s.dOffset:0;
+      const segOffset=Number.isFinite(s?.dOffset)?s.dOffset:defaultOffsetForIndex(s?.idx||0);
       const segGain=(Number.isFinite(s?.yGain)&&s.yGain>0)?s.yGain:1;
       const pts=s?getPts(af,s):[];
       const previewPts=previewX.map(x=>{
@@ -1680,8 +1818,10 @@ function renderChart(){
   if(chartRaw)chartRaw.destroy();
   if(thermalChart)thermalChart.destroy();
   if(!isFinite(dscBounds.xMin)){dscBounds.xMin=0;dscBounds.xMax=1;dscBounds.yMin=0;dscBounds.yMax=1;}
+  if(!isFinite(dscRawBounds.xMin)){dscRawBounds.xMin=0;dscRawBounds.xMax=1;dscRawBounds.yMin=0;dscRawBounds.yMax=1;}
   if(!isFinite(thermalBounds.xMin)){thermalBounds.xMin=0;thermalBounds.xMax=1;thermalBounds.yMin=0;thermalBounds.yMax=1;}
   lastDscBounds={...dscBounds};
+  lastDscRawBounds={...dscRawBounds};
   lastThermalBounds={...thermalBounds};
   syncViewInputs(dscBounds,thermalBounds);
 
@@ -1693,12 +1833,16 @@ function renderChart(){
       interaction:{mode:'nearest',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{
+        tooltip:{enabled:hoverEnabled,callbacks:{
           title:items=>{
+            if(hoverMode==='temp')return '';
             const x=items?.[0]?.raw?.x ?? items?.[0]?.parsed?.x;
             return `t = ${(+x).toFixed(3)} min`;
           },
-          label:item=>`${item.dataset.label}: ${(+item.parsed.y).toFixed(2)} °C`
+          label:item=>{
+            if(hoverMode==='temp')return `Temp: ${(+item.parsed.y).toFixed(2)} °C`;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(2)} °C`;
+          }
         }}
       },
       scales:{
@@ -1718,17 +1862,27 @@ function renderChart(){
     options:{
       responsive:true,maintainAspectRatio:false,animation:{duration:100},
       onClick:handleChartClick,
-      interaction:{mode:'index',intersect:false},
+      interaction:{mode:'nearest',intersect:false},
       plugins:{
         legend:{
           display:files.length>1,position:'top',
           labels:{boxWidth:20,boxHeight:2,font:{size:11},color:'#aaa',
             filter:i=>!i.text.startsWith('BL ')&&i.text!=='ピーク'&&i.text!=='BL指定点'}
         },
-        tooltip:{callbacks:{
-          title:items=>xAxis==='temp'?`T = ${(+items[0].parsed.x).toFixed(2)} °C`:`t = ${(+items[0].parsed.x).toFixed(3)} min`,
-          label:item=>item.dataset._isBL||item.dataset._isPeak||item.dataset._isClick?null:
-            `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`
+        tooltip:{enabled:hoverEnabled,callbacks:{
+          title:items=>{
+            const x=+items[0].parsed.x;
+            if(hoverMode==='temp'){
+              const temp=tempFromMetaAtX(items[0].dataset._meta,x);
+              return temp===null?'':`T = ${temp.toFixed(2)} °C`;
+            }
+            return xAxis==='temp'?`T = ${x.toFixed(2)} °C`:`t = ${x.toFixed(3)} min`;
+          },
+          label:item=>{
+            if(item.dataset._isBL||item.dataset._isPeak||item.dataset._isClick)return null;
+            if(hoverMode==='temp')return null;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`;
+          }
         }}
       },
       scales:{
@@ -1746,21 +1900,31 @@ function renderChart(){
     type:'line',data:{datasets:rawDatasets},
     options:{
       responsive:true,maintainAspectRatio:false,animation:{duration:100},
-      interaction:{mode:'index',intersect:false},
+      interaction:{mode:'nearest',intersect:false},
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{
-          title:items=>xAxis==='temp'?`T = ${(+items[0].parsed.x).toFixed(2)} °C`:`t = ${(+items[0].parsed.x).toFixed(3)} min`,
-          label:item=>item.dataset._isBL||item.dataset._isPeak?null:
-            `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`
+        tooltip:{enabled:hoverEnabled,callbacks:{
+          title:items=>{
+            const x=+items[0].parsed.x;
+            if(hoverMode==='temp'){
+              const temp=tempFromMetaAtX(items[0].dataset._meta,x);
+              return temp===null?'':`T = ${temp.toFixed(2)} °C`;
+            }
+            return xAxis==='temp'?`T = ${x.toFixed(2)} °C`:`t = ${x.toFixed(3)} min`;
+          },
+          label:item=>{
+            if(item.dataset._isBL||item.dataset._isPeak)return null;
+            if(hoverMode==='temp')return null;
+            return `${item.dataset.label}: ${(+item.parsed.y).toFixed(4)} mW/mg`;
+          }
         }}
       },
       scales:{
         x:{type:'linear',
-          min:dscView.xMin??undefined,max:dscView.xMax??undefined,
+          min:dscRawView.xMin??undefined,max:dscRawView.xMax??undefined,
           title:{display:true,text:xAxis==='temp'?'温度 (°C)':'時間 (min)',font:{size:11},color:'#aaa'},
           grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},maxTicksLimit:12}},
-        y:{min:dscView.yMin??undefined,max:dscView.yMax??undefined,
+        y:{min:dscRawView.yMin??undefined,max:dscRawView.yMax??undefined,
           title:{display:true,text:'熱流 (mW/mg)',font:{size:11},color:'#aaa'},
           grid:{color:'rgba(0,0,0,0.04)'},ticks:{color:'#aaa',font:{size:10},callback:v=>v.toFixed(3)}}
       }
@@ -1768,8 +1932,10 @@ function renderChart(){
   });
   syncModeButtons();
   bindWheelZoom(document.getElementById('cvs'),()=>chart,dscView,dscBounds,()=>chartMode.dsc);
+  bindWheelZoom(document.getElementById('cvsRaw'),()=>chartRaw,dscRawView,dscRawBounds,()=>chartMode.dsc);
   bindWheelZoom(document.getElementById('thermalCvs'),()=>thermalChart,thermalView,thermalBounds,()=>chartMode.thermal);
   bindDragZoom(document.getElementById('cvs'),()=>chart,dscView,dscBounds,()=>chartMode.dsc,document.getElementById('dscZoomBox'));
+  bindDragZoom(document.getElementById('cvsRaw'),()=>chartRaw,dscRawView,dscRawBounds,()=>chartMode.dsc,document.getElementById('dscRawZoomBox'));
   bindDragZoom(document.getElementById('thermalCvs'),()=>thermalChart,thermalView,thermalBounds,()=>chartMode.thermal,document.getElementById('thZoomBox'));
 }
 
