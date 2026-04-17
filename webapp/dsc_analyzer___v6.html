@@ -89,7 +89,13 @@ input[type=file]{display:none}
 
 /* chart */
 .chart-outer{background:#fff;border-radius:10px;border:1px solid #e4e4e0;padding:1rem;margin-bottom:.75rem}
-.cwrap{display:grid;grid-template-columns:minmax(260px,30%) 1fr;gap:12px;align-items:stretch}
+.cwrap{display:grid;gap:12px;align-items:stretch}
+.cwrap.layout-row{grid-template-columns:minmax(260px,var(--thermal-size,35%)) minmax(320px,var(--dsc-size,65%))}
+.cwrap.layout-col{grid-template-columns:1fr;grid-template-rows:minmax(260px,var(--thermal-size,45%)) minmax(260px,var(--dsc-size,55%))}
+.thermal-zone{display:flex;gap:10px;min-height:430px}
+.thermal-zone.table-left{flex-direction:row}
+.thermal-zone.table-bottom{flex-direction:column}
+.chart-pane-wrap{flex:1;min-width:0}
 .chart-pane{position:relative;min-height:430px;background:#fff;border:1px solid #f0f0ee;border-radius:8px;padding:.5rem}
 .chart-pane.thermal{background:#fafaf8}
 .chart-tools{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:3}
@@ -121,6 +127,17 @@ tr:hover td{background:#fafaf8}
 
 /* display controls */
 .disp-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:.6rem .9rem;background:#fafaf8;border-bottom:1px solid #f0f0ee}
+.seg-range-wrap{background:#fff;border:1px solid #ececea;border-radius:8px;display:flex;flex-direction:column;min-width:210px}
+.seg-range-wrap.left{width:260px}
+.seg-range-wrap.bottom{width:100%;max-height:180px}
+.seg-range-head{display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid #f2f2ef;background:#fafaf8}
+.seg-range-head span{font-size:11px;color:#888}
+.seg-range-table-box{overflow:auto}
+.seg-range-table{width:100%;border-collapse:collapse;font-size:11px}
+.seg-range-table th,.seg-range-table td{padding:4px 6px;border-bottom:1px solid #f5f5f2;white-space:nowrap}
+.seg-range-table th{font-size:10px;color:#aaa;background:#fafaf8}
+.seg-range-table td input{width:88px;font-size:11px;padding:2px 4px;border:1px solid #e0e0da;border-radius:4px}
+.seg-range-table td input:focus{outline:none;border-color:#378ADD}
 </style>
 </head>
 <body>
@@ -128,7 +145,8 @@ tr:hover td{background:#fafaf8}
 <div class="header">
   <h1>DSC Analyzer</h1>
   <span class="ver">v6</span>
-  <span class="hsub">Pyris メソッドステップ対応 · セグメント選択 → BL設定 → 解析</span>
+  <button class="btn" id="langBtn" onclick="toggleLanguage()" style="margin-left:auto">JP</button>
+  <span class="hsub" id="headerSub">Pyris method-step support - Select segment -> Baseline -> Analyze</span>
 </div>
 
 <div class="wrap">
@@ -139,33 +157,33 @@ tr:hover td{background:#fafaf8}
 
   <!-- File loader -->
   <div class="dz" id="dz">
-    <p>ファイルをドロップ（複数可）<br>または</p>
+    <p id="dropText">Drop files (multiple)<br>or</p>
     <input type="file" id="fileIn" accept=".txt,.csv" multiple>
-    <button class="btn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">ファイルを選択</button>
+    <button class="btn" id="fileSelectBtn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">Select files</button>
   </div>
 
   <!-- File list -->
   <div class="panel" id="flPanel" style="display:none">
-    <div class="ptitle">ファイル
-      <button class="btn warn" style="font-size:10px;padding:1px 7px;margin-left:auto" onclick="clearAll()">全消去</button>
+    <div class="ptitle"><span id="filesTitle">Files</span>
+      <button class="btn warn" id="clearAllBtn" style="font-size:10px;padding:1px 7px;margin-left:auto" onclick="clearAll()">Clear all</button>
     </div>
     <div id="fileList"></div>
   </div>
 
   <!-- Display -->
   <div class="panel" id="ctrlPanel" style="display:none">
-    <div class="ptitle">表示</div>
-    <div class="lbl">X軸</div>
+    <div class="ptitle" id="displayTitle">Display</div>
+    <div class="lbl" id="xAxisLbl">X Axis</div>
     <div class="btn-row">
-      <button class="btn on" id="btnTemp" onclick="setX('temp')">温度 (°C)</button>
-      <button class="btn" id="btnTime" onclick="setX('time')">時間 (min)</button>
+      <button class="btn on" id="btnTemp" onclick="setX('temp')">Temperature (degC)</button>
+      <button class="btn" id="btnTime" onclick="setX('time')">Time (min)</button>
     </div>
-    <div class="lbl">熱流</div>
+    <div class="lbl" id="heatFlowLbl">Heat Flow</div>
     <div class="btn-row">
-      <button class="btn on" id="btnHF" onclick="setY('hf')">補正後</button>
+      <button class="btn on" id="btnHF" onclick="setY('hf')">Corrected</button>
       <button class="btn" id="btnUHF" onclick="setY('uhf')">Raw</button>
     </div>
-    <div class="lbl">表示スパン（DSC）</div>
+    <div class="lbl" id="dscSpanLbl">Display Span (DSC)</div>
     <div class="bl-grid">
       <div class="blf"><label>X最小</label><input type="number" id="dscXMin" step="0.1"></div>
       <div class="blf"><label>X最大</label><input type="number" id="dscXMax" step="0.1"></div>
@@ -173,10 +191,10 @@ tr:hover td{background:#fafaf8}
       <div class="blf"><label>Y最大</label><input type="number" id="dscYMax" step="0.01"></div>
     </div>
     <div class="btn-row">
-      <button class="btn" onclick="applyViewSpan('dsc')">DSCスパン適用</button>
-      <button class="btn" onclick="resetViewSpan('dsc')">DSCリセット</button>
+      <button class="btn" id="applyDscSpanBtn" onclick="applyViewSpan('dsc')">Apply DSC span</button>
+      <button class="btn" id="resetDscSpanBtn" onclick="resetViewSpan('dsc')">Reset DSC</button>
     </div>
-    <div class="lbl">表示スパン（Thermal）</div>
+    <div class="lbl" id="thSpanLbl">Display Span (Thermal)</div>
     <div class="bl-grid">
       <div class="blf"><label>t最小 (min)</label><input type="number" id="thXMin" step="0.1"></div>
       <div class="blf"><label>t最大 (min)</label><input type="number" id="thXMax" step="0.1"></div>
@@ -184,16 +202,31 @@ tr:hover td{background:#fafaf8}
       <div class="blf"><label>T最大 (°C)</label><input type="number" id="thYMax" step="0.1"></div>
     </div>
     <div class="btn-row">
-      <button class="btn" onclick="applyViewSpan('thermal')">Thermalスパン適用</button>
-      <button class="btn" onclick="resetViewSpan('thermal')">Thermalリセット</button>
+      <button class="btn" id="applyThSpanBtn" onclick="applyViewSpan('thermal')">Apply Thermal span</button>
+      <button class="btn" id="resetThSpanBtn" onclick="resetViewSpan('thermal')">Reset Thermal</button>
     </div>
-    <div class="lbl">グラフ操作モード</div>
+    <div class="lbl" id="graphModeLbl">Graph Interaction Mode</div>
     <div class="btn-row">
-      <button class="btn on" id="btnZoomMode" onclick="setChartMode('zoom')">ズーム操作</button>
-      <button class="btn" id="btnLockMode" onclick="setChartMode('lock')">固定</button>
+      <button class="btn on" id="btnZoomMode" onclick="setChartMode('zoom')">Zoom</button>
+      <button class="btn" id="btnLockMode" onclick="setChartMode('lock')">Lock</button>
       <button class="btn" onclick="allScale('both')" style="margin-left:auto">All Scale</button>
-      <button class="btn" onclick="allScale('dsc')">DSCのみ</button>
-      <button class="btn" onclick="allScale('thermal')">Thermalのみ</button>
+      <button class="btn" id="allDscBtn" onclick="allScale('dsc')">DSC only</button>
+      <button class="btn" id="allThermalBtn" onclick="allScale('thermal')">Thermal only</button>
+    </div>
+    <div class="lbl" id="graphLayoutLbl">Graph Layout</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnLayoutRow" onclick="setGraphLayout('row')">Side by side</button>
+      <button class="btn" id="btnLayoutCol" onclick="setGraphLayout('col')">Stacked</button>
+    </div>
+    <div class="lbl" id="ratioLbl">Size Ratio (Thermal / DSC)</div>
+    <div class="btn-row" style="align-items:center">
+      <input type="range" id="layoutRatio" min="25" max="75" step="1" value="35" oninput="setGraphRatio(this.value)" style="width:100%">
+      <span id="layoutRatioLabel" style="font-size:11px;color:#888;min-width:85px;text-align:right">35% / 65%</span>
+    </div>
+    <div class="lbl" id="segPosLbl">Segment Table Position</div>
+    <div class="btn-row">
+      <button class="btn on" id="btnSegPosLeft" onclick="setSegTablePos('left')">Left of thermal</button>
+      <button class="btn" id="btnSegPosBottom" onclick="setSegTablePos('bottom')">Below thermal</button>
     </div>
     <div style="font-size:10px;color:#bbb;margin-top:4px">ズーム操作モード時のみ: ホイール(X), Alt+ホイール(Y), 左ドラッグ(範囲ズーム) / Shortcut: Z(ズーム), X(固定), A(All), D(DSC), T(Thermal)</div>
   </div>
@@ -207,11 +240,11 @@ tr:hover td{background:#fafaf8}
 
   <!-- Segment list panel -->
   <div class="panel" id="segPanel" style="display:none">
-    <div class="ptitle">メソッドステップ（セグメント）
-      <span class="badge" id="segHint">クリックで展開 → BL設定 → 解析実行</span>
+    <div class="ptitle"><span id="segmentTitle">Method Steps (Segments)</span>
+      <span class="badge" id="segHint">Click to expand -> baseline -> run analysis</span>
     </div>
     <div style="font-size:11px;color:#bbb;margin-bottom:.6rem;padding:.4rem .5rem;background:#fafaf8;border-radius:6px;border:1px solid #f0f0ee">
-      各ステップをクリックして展開 → ベースライン（T1〜T4）を設定 →「BL適用」→「解析実行」
+      Click each step, set baseline points (T1-T4), apply baseline, then run analysis.
     </div>
     <div id="segList" class="seg-list"></div>
   </div>
@@ -219,24 +252,42 @@ tr:hover td{background:#fafaf8}
   <!-- Chart -->
   <div class="chart-outer">
     <div class="disp-row">
-      <span style="font-size:11px;color:#aaa">解析オプション：</span>
-      <button class="btn" id="btnPk" onclick="togglePeaks()">ピーク自動検出</button>
-      <button class="btn green" onclick="runAnalysis()" style="margin-left:auto">▶ 全セグメント解析実行</button>
-      <button class="btn" onclick="exportCSV()">CSV出力</button>
+      <span style="font-size:11px;color:#aaa" id="analysisOptLbl">Analysis options:</span>
+      <button class="btn" id="btnPk" onclick="togglePeaks()">Auto peak detect</button>
+      <button class="btn green" id="runAnalysisBtn" onclick="runAnalysis()" style="margin-left:auto">▶ Run analysis (all segments)</button>
+      <button class="btn" id="exportCsvBtn" onclick="exportCSV()">Export CSV</button>
     </div>
-    <div class="cwrap" style="padding:1rem">
-      <div class="chart-pane thermal">
-        <div class="chart-label">Thermal</div>
-        <div class="chart-tools">
-          <button class="tool-btn on" id="thModeBtn" title="ズーム操作" onclick="toggleGraphMode('thermal')">🔍</button>
-          <button class="tool-btn" title="全体表示に戻す" onclick="allScale('thermal')">⤢</button>
-          <button class="tool-btn" title="X拡大" onclick="zoomByButton('thermal','x',0.85)">＋</button>
-          <button class="tool-btn" title="X縮小" onclick="zoomByButton('thermal','x',1.18)">－</button>
-          <button class="tool-btn" title="Y拡大" onclick="zoomByButton('thermal','y',0.85)">↕＋</button>
-          <button class="tool-btn" title="Y縮小" onclick="zoomByButton('thermal','y',1.18)">↕－</button>
+    <div class="cwrap layout-row" id="chartWrap" style="padding:1rem">
+      <div class="thermal-zone table-left" id="thermalZone">
+        <div class="seg-range-wrap left" id="segRangeWrap">
+          <div class="seg-range-head">
+            <span id="segRangeTitle">Segment Range (Time min)</span>
+            <button class="btn" id="applyAllSegBtn" style="font-size:10px;padding:1px 6px;margin-left:auto" onclick="applyAllSegRangeFromTable()">Apply all</button>
+          </div>
+          <div class="seg-range-table-box">
+            <table class="seg-range-table">
+              <thead>
+                <tr><th>Step</th><th id="segStartHead">Start</th><th id="segEndHead">End</th><th></th></tr>
+              </thead>
+              <tbody id="segRangeBody"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="zoom-box" id="thZoomBox"></div>
-        <canvas id="thermalCvs" role="img" aria-label="Thermal profile（時間-温度）"></canvas>
+        <div class="chart-pane-wrap">
+          <div class="chart-pane thermal">
+            <div class="chart-label">Thermal</div>
+            <div class="chart-tools">
+              <button class="tool-btn on" id="thModeBtn" title="ズーム操作" onclick="toggleGraphMode('thermal')">🔍</button>
+              <button class="tool-btn" title="全体表示に戻す" onclick="allScale('thermal')">⤢</button>
+              <button class="tool-btn" title="X拡大" onclick="zoomByButton('thermal','x',0.85)">＋</button>
+              <button class="tool-btn" title="X縮小" onclick="zoomByButton('thermal','x',1.18)">－</button>
+              <button class="tool-btn" title="Y拡大" onclick="zoomByButton('thermal','y',0.85)">↕＋</button>
+              <button class="tool-btn" title="Y縮小" onclick="zoomByButton('thermal','y',1.18)">↕－</button>
+            </div>
+            <div class="zoom-box" id="thZoomBox"></div>
+            <canvas id="thermalCvs" role="img" aria-label="Thermal profile（時間-温度）"></canvas>
+          </div>
+        </div>
       </div>
       <div class="chart-pane">
         <div class="chart-label">DSC</div>
@@ -252,18 +303,18 @@ tr:hover td{background:#fafaf8}
         <canvas id="cvs" role="img" aria-label="DSC熱流量グラフ"></canvas>
       </div>
     </div>
-    <div class="cfoot" id="cfoot">ファイルを読み込んでください</div>
+    <div class="cfoot" id="cfoot">Please load files</div>
   </div>
 
   <!-- Results -->
   <div class="rtable-wrap" id="rSection" style="display:none">
-    <div class="rhead">解析結果
-      <span style="font-size:10px;color:#bbb;font-weight:400;margin-left:6px">BL設定済みセグメントの ΔH = ∫(HF−BL)dT / scanRate × 60</span>
+    <div class="rhead"><span id="resultsTitle">Results</span>
+      <span style="font-size:10px;color:#bbb;font-weight:400;margin-left:6px">ΔH = ∫(HF−BL)dT / scanRate × 60 (baseline-configured segments)</span>
     </div>
     <div style="overflow-x:auto">
       <table>
         <thead><tr>
-          <th></th><th>ファイル</th><th>Step</th><th>種別</th>
+          <th></th><th id="resultFileHead">File</th><th>Step</th><th id="resultTypeHead">Type</th>
           <th>Tonset</th><th>Tpeak</th><th>Tend</th>
           <th>ΔH (J/g)</th><th>BL</th>
         </tr></thead>
@@ -283,6 +334,7 @@ const FC=['#378ADD','#D85A30','#7F77DD','#1D9E75','#BA7517','#D4537E','#888780',
 // Step colors by type
 const STYPE_COLOR={heating:'#D85A30',cooling:'#378ADD',isothermal:'#888780'};
 const STYPE_LABEL={heating:'加熱',cooling:'冷却',isothermal:'等温'};
+const STYPE_LABEL_EN={heating:'Heating',cooling:'Cooling',isothermal:'Isothermal'};
 
 let files=[];        // file objects
 let activeId=null;
@@ -297,6 +349,43 @@ let suppressChartClick=false;
 let chartMode={dsc:'zoom',thermal:'zoom'}; // per graph: 'zoom' or 'lock'
 let lastDscBounds={xMin:0,xMax:1,yMin:0,yMax:1};
 let lastThermalBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let graphLayout='row'; // row|col
+let graphRatio=35; // thermal share (%)
+let segTablePos='left'; // left|bottom
+let uiLang='en';
+const I18N={
+  en:{
+    dataColsNotFound:'Data columns not found',
+    noNumericData:'No numeric data',
+    enterStartEnd:'Please enter start and end time',
+    startLessThanEnd:'Please set start time < end time',
+    timeRange:'Time range must be between {min} and {max} min',
+    invalidRange:'Could not create a valid range from the specified times',
+    noValidRange:'No valid ranges found (start<end and within measured time range)',
+    enterT1T4:'Please enter all T1 to T4',
+    validTOrder:'Please ensure T1 < T2 < T3 < T4',
+    minLessThanMax:'Please set min < max',
+    runAnalysisFirst:'Run analysis first'
+  },
+  ja:{
+    dataColsNotFound:'データ列が見つかりません',
+    noNumericData:'数値データなし',
+    enterStartEnd:'開始時間と終了時間を入力してください',
+    startLessThanEnd:'開始時間 < 終了時間 になるよう設定してください',
+    timeRange:'時間範囲は {min}〜{max} min の間で指定してください',
+    invalidRange:'指定した時間範囲から有効な区間を作れませんでした',
+    noValidRange:'有効な範囲がありませんでした（開始<終了、かつ測定時間範囲内で入力してください）',
+    enterT1T4:'T1〜T4をすべて入力してください',
+    validTOrder:'T1 < T2 < T3 < T4 になるよう設定してください',
+    minLessThanMax:'最小値 < 最大値 で入力してください',
+    runAnalysisFirst:'先に「解析実行」してください'
+  }
+};
+function t(key,vars={}){
+  let s=(I18N[uiLang]&&I18N[uiLang][key])||I18N.en[key]||key;
+  Object.keys(vars).forEach(k=>{s=s.replace(`{${k}}`,vars[k]);});
+  return s;
+}
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────
 const dz=document.getElementById('dz');
@@ -338,7 +427,7 @@ function parse(txt,fname){
     }
   }
 
-  if(dataStart<0){alert(fname+': データ列が見つかりません');return;}
+  if(dataStart<0){alert(fname+': '+t('dataColsNotFound'));return;}
 
   // parse numeric data
   const rows=[];
@@ -349,7 +438,7 @@ function parse(txt,fname){
     if(n.slice(0,5).some(isNaN))continue;
     rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
   }
-  if(!rows.length){alert(fname+': 数値データなし');return;}
+  if(!rows.length){alert(fname+': '+t('noNumericData'));return;}
 
   // Assign rows to method steps based on temperature/time profile
   const segments=assignSegments(rows, methodSteps);
@@ -508,6 +597,8 @@ function refreshUI(){
 
   // segment list
   renderSegList();
+  renderSegRangeTable();
+  syncLayoutUI();
 }
 
 function removeF(id,e){
@@ -527,9 +618,11 @@ function renderSegList(){
 
   af.segments.forEach(s=>{
     const color=STYPE_COLOR[s.type]||'#888';
-    const tlabel=STYPE_LABEL[s.type]||s.type;
+    const tlabel=(uiLang==='en'?STYPE_LABEL_EN:STYPE_LABEL)[s.type]||s.type;
     let desc='';
-    if(s.type==='isothermal') desc=`等温 ${s.fromT!==null?s.fromT.toFixed(1):'?'}°C × ${(s.tEnd-s.tStart).toFixed(1)} min`;
+    if(s.type==='isothermal') desc=uiLang==='en'
+      ?`Isothermal ${s.fromT!==null?s.fromT.toFixed(1):'?'}°C x ${(s.tEnd-s.tStart).toFixed(1)} min`
+      :`等温 ${s.fromT!==null?s.fromT.toFixed(1):'?'}°C × ${(s.tEnd-s.tStart).toFixed(1)} min`;
     else desc=`${tlabel} ${(s.tmin).toFixed(1)}→${(s.tmax).toFixed(1)} °C @ ${s.rate}°C/min`;
 
     const hasBL=!!s.bl;
@@ -544,8 +637,8 @@ function renderSegList(){
       ?`<span style="font-size:10px;background:#d7f5ea;color:#0F6E56;padding:1px 6px;border-radius:3px;margin-left:4px;flex-shrink:0">BL✓</span>`
       :'';
     const analyzeState=s.analyze
-      ?`<span style="font-size:10px;background:#dbeeff;color:#185FA5;padding:1px 6px;border-radius:3px;flex-shrink:0;cursor:pointer" title="クリックで解析対象を外す" onclick="toggleAnalyze(${s.idx},event)">解析対象</span>`
-      :`<span style="font-size:10px;color:#ccc;padding:1px 6px;border-radius:3px;border:1px solid #e8e8e8;flex-shrink:0;cursor:pointer" title="クリックして解析対象にする" onclick="toggleAnalyze(${s.idx},event)">対象外</span>`;
+      ?`<span style="font-size:10px;background:#dbeeff;color:#185FA5;padding:1px 6px;border-radius:3px;flex-shrink:0;cursor:pointer" title="${uiLang==='en'?'Click to exclude from analysis':'クリックで解析対象を外す'}" onclick="toggleAnalyze(${s.idx},event)">${uiLang==='en'?'Analyze':'解析対象'}</span>`
+      :`<span style="font-size:10px;color:#ccc;padding:1px 6px;border-radius:3px;border:1px solid #e8e8e8;flex-shrink:0;cursor:pointer" title="${uiLang==='en'?'Click to include in analysis':'クリックして解析対象にする'}" onclick="toggleAnalyze(${s.idx},event)">${uiLang==='en'?'Excluded':'対象外'}</span>`;
 
     item.innerHTML=`
       <div class="seg-header" onclick="selectSeg(${s.idx})">
@@ -569,27 +662,27 @@ function renderSegBody(s,af){
   const yGain=Number.isFinite(s.yGain)?s.yGain:1;
   return `
     <div class="seg-stats">
-      <div class="seg-stat">T範囲 <span>${s.tmin.toFixed(1)}〜${s.tmax.toFixed(1)} °C</span></div>
-      <div class="seg-stat">時間 <span>${s.tStart.toFixed(1)}〜${s.tEnd.toFixed(1)} min</span></div>
-      ${s.rate>0?`<div class="seg-stat">速度 <span>${s.rate} °C/min</span></div>`:''}
+      <div class="seg-stat">${uiLang==='en'?'T range':'T範囲'} <span>${s.tmin.toFixed(1)}〜${s.tmax.toFixed(1)} °C</span></div>
+      <div class="seg-stat">${uiLang==='en'?'Time':'時間'} <span>${s.tStart.toFixed(1)}〜${s.tEnd.toFixed(1)} min</span></div>
+      ${s.rate>0?`<div class="seg-stat">${uiLang==='en'?'Rate':'速度'} <span>${s.rate} °C/min</span></div>`:''}
     </div>
     <div class="bl-cfg">
-      <div class="lbl">セグメント区間の手動補正（時間）</div>
+      <div class="lbl">${uiLang==='en'?'Manual segment range correction (time)':'セグメント区間の手動補正（時間）'}</div>
       <div class="bl-grid">
-        <div class="blf"><label>開始時間 (min)</label><input type="number" id="sTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></div>
-        <div class="blf"><label>終了時間 (min)</label><input type="number" id="sTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></div>
+        <div class="blf"><label>${uiLang==='en'?'Start time (min)':'開始時間 (min)'}</label><input type="number" id="sTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></div>
+        <div class="blf"><label>${uiLang==='en'?'End time (min)':'終了時間 (min)'}</label><input type="number" id="sTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></div>
       </div>
       <div style="display:flex;gap:5px;margin-bottom:.55rem">
-        <button class="btn" style="width:100%" onclick="applySegRange(${s.idx})">この区間を適用</button>
+        <button class="btn" style="width:100%" onclick="applySegRange(${s.idx})">${uiLang==='en'?'Apply this range':'この区間を適用'}</button>
       </div>
-      <div class="lbl">DSC表示補正（セグメント別）</div>
+      <div class="lbl">${uiLang==='en'?'DSC display correction (per segment)':'DSC表示補正（セグメント別）'}</div>
       <div class="bl-grid">
         <div class="blf"><label>Yオフセット (mW/mg)</label><input type="number" id="dOff-${s.idx}" value="${dOffset}" step="0.05" oninput="setSegOffset(${s.idx},this.value)"></div>
         <div class="blf"><label>強度倍率 (×)</label><input type="number" id="dGain-${s.idx}" value="${yGain}" step="0.05" min="0.05" oninput="setSegGain(${s.idx},this.value)"></div>
       </div>
       <div class="bl-cfg-title">
-        <span>ベースライン設定 <span style="color:${hasBL?'#1D9E75':'#ccc'}">${hasBL?'設定済み':'未設定'}</span></span>
-        ${hasBL?`<button class="btn warn" style="font-size:10px;padding:1px 6px" onclick="clearSegBL(${s.idx})">消去</button>`:''}
+        <span>${uiLang==='en'?'Baseline':'ベースライン設定'} <span style="color:${hasBL?'#1D9E75':'#ccc'}">${hasBL?(uiLang==='en'?'Configured':'設定済み'):(uiLang==='en'?'Not set':'未設定')}</span></span>
+        ${hasBL?`<button class="btn warn" style="font-size:10px;padding:1px 6px" onclick="clearSegBL(${s.idx})">${uiLang==='en'?'Clear':'消去'}</button>`:''}
       </div>
       <div class="step-strip" id="sstep-${s.idx}" style="display:none">
         <div class="step" id="ss0-${s.idx}">① 低温BL開始</div>
@@ -597,22 +690,22 @@ function renderSegBody(s,af){
         <div class="step" id="ss2-${s.idx}">③ 高温BL開始</div>
         <div class="step" id="ss3-${s.idx}">④ 高温BL終了</div>
       </div>
-      <div class="lbl">低温側BL範囲</div>
+      <div class="lbl">${uiLang==='en'?'Low-side BL range':'低温側BL範囲'}</div>
       <div class="bl-grid">
         <div class="blf"><label>T1 開始 (${xUnit})</label><input type="number" id="bT1-${s.idx}" value="${bl.T1}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
         <div class="blf"><label>T2 終了 (${xUnit})</label><input type="number" id="bT2-${s.idx}" value="${bl.T2}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
       </div>
-      <div class="lbl">高温側BL範囲</div>
+      <div class="lbl">${uiLang==='en'?'High-side BL range':'高温側BL範囲'}</div>
       <div class="bl-grid">
         <div class="blf"><label>T3 開始 (${xUnit})</label><input type="number" id="bT3-${s.idx}" value="${bl.T3}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
         <div class="blf"><label>T4 終了 (${xUnit})</label><input type="number" id="bT4-${s.idx}" value="${bl.T4}" step="0.1" placeholder="${xAxis==='temp'?'°C':'min'}"></div>
       </div>
       <div class="bl-type-row">
-        <button class="btn ${!bl.type||bl.type==='sigmoid'?'on':''}" id="btSig-${s.idx}" onclick="setSegBLType(${s.idx},'sigmoid')">シグモイド</button>
-        <button class="btn ${bl.type==='linear'?'on':''}" id="btLin-${s.idx}" onclick="setSegBLType(${s.idx},'linear')">直線</button>
-        <button class="btn" style="margin-left:auto" onclick="startClickBL(${s.idx})">クリック指定</button>
+        <button class="btn ${!bl.type||bl.type==='sigmoid'?'on':''}" id="btSig-${s.idx}" onclick="setSegBLType(${s.idx},'sigmoid')">${uiLang==='en'?'Sigmoid':'シグモイド'}</button>
+        <button class="btn ${bl.type==='linear'?'on':''}" id="btLin-${s.idx}" onclick="setSegBLType(${s.idx},'linear')">${uiLang==='en'?'Linear':'直線'}</button>
+        <button class="btn" style="margin-left:auto" onclick="startClickBL(${s.idx})">${uiLang==='en'?'Click assign':'クリック指定'}</button>
       </div>
-      <button class="btn accent" style="width:100%" onclick="applySegBL(${s.idx})">このセグメントにBL適用</button>
+      <button class="btn accent" style="width:100%" onclick="applySegBL(${s.idx})">${uiLang==='en'?'Apply baseline to this segment':'このセグメントにBL適用'}</button>
     </div>`;
 }
 
@@ -666,20 +759,20 @@ function applySegRange(idx){
   const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
   const tStart=parseFloat(document.getElementById(`sTs-${idx}`)?.value);
   const tEnd=parseFloat(document.getElementById(`sTe-${idx}`)?.value);
-  if(isNaN(tStart)||isNaN(tEnd)){alert('開始時間と終了時間を入力してください');return;}
-  if(tStart>=tEnd){alert('開始時間 < 終了時間 になるよう設定してください');return;}
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  if(tStart>=tEnd){alert(t('startLessThanEnd'));return;}
 
   const minTime=af.data[0].time;
   const maxTime=af.data[af.data.length-1].time;
   if(tStart<minTime||tEnd>maxTime){
-    alert(`時間範囲は ${minTime.toFixed(3)}〜${maxTime.toFixed(3)} min の間で指定してください`);
+    alert(t('timeRange',{min:minTime.toFixed(3),max:maxTime.toFixed(3)}));
     return;
   }
 
   const startIdx=nearestTimeIndex(af.data,tStart);
   const endIdx=nearestTimeIndex(af.data,tEnd);
   if(startIdx<0||endIdx<0||startIdx>=endIdx){
-    alert('指定した時間範囲から有効な区間を作れませんでした');
+    alert(t('invalidRange'));
     return;
   }
 
@@ -692,6 +785,72 @@ function applySegRange(idx){
   s.tmax=Math.max(...slice.map(r=>r.temp));
 
   renderSegList();
+  renderSegRangeTable();
+  renderChart();
+}
+
+function renderSegRangeTable(){
+  const body=document.getElementById('segRangeBody');
+  if(!body)return;
+  const af=getAF();
+  body.innerHTML='';
+  if(!af)return;
+  af.segments.forEach(s=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${s.num}</td>
+      <td><input type="number" id="trTs-${s.idx}" value="${s.tStart.toFixed(3)}" step="0.01"></td>
+      <td><input type="number" id="trTe-${s.idx}" value="${s.tEnd.toFixed(3)}" step="0.01"></td>
+      <td><button class="btn" style="font-size:10px;padding:1px 6px" onclick="applySegRangeFromTable(${s.idx})">適用</button></td>`;
+    body.appendChild(tr);
+  });
+}
+
+function applySegRangeFromTable(idx){
+  const af=getAF();if(!af)return;
+  const s=af.segments.find(sg=>sg.idx===idx);if(!s)return;
+  const tStart=parseFloat(document.getElementById(`trTs-${idx}`)?.value);
+  const tEnd=parseFloat(document.getElementById(`trTe-${idx}`)?.value);
+  if(isNaN(tStart)||isNaN(tEnd)){alert(t('enterStartEnd'));return;}
+  const segStartInput=document.getElementById(`sTs-${idx}`);
+  const segEndInput=document.getElementById(`sTe-${idx}`);
+  if(segStartInput)segStartInput.value=tStart;
+  if(segEndInput)segEndInput.value=tEnd;
+  applySegRange(idx);
+}
+
+function applyAllSegRangeFromTable(){
+  const af=getAF();if(!af)return;
+  const minTime=af.data[0].time;
+  const maxTime=af.data[af.data.length-1].time;
+  let okCount=0;
+  for(const s of af.segments){
+    const tStart=parseFloat(document.getElementById(`trTs-${s.idx}`)?.value);
+    const tEnd=parseFloat(document.getElementById(`trTe-${s.idx}`)?.value);
+    if(isNaN(tStart)||isNaN(tEnd))continue;
+    if(!(tStart<tEnd))continue;
+    if(tStart<minTime||tEnd>maxTime)continue;
+    s.tStart=tStart;
+    s.tEnd=tEnd;
+    const startIdx=nearestTimeIndex(af.data,tStart);
+    const endIdx=nearestTimeIndex(af.data,tEnd);
+    if(startIdx>=0&&endIdx>startIdx){
+      s.start=startIdx;
+      s.end=endIdx;
+      const slice=af.data.slice(startIdx,endIdx+1);
+      s.tStart=af.data[startIdx].time;
+      s.tEnd=af.data[endIdx].time;
+      s.tmin=Math.min(...slice.map(r=>r.temp));
+      s.tmax=Math.max(...slice.map(r=>r.temp));
+      okCount++;
+    }
+  }
+  if(!okCount){
+    alert(t('noValidRange'));
+    return;
+  }
+  renderSegList();
+  renderSegRangeTable();
   renderChart();
 }
 
@@ -728,8 +887,8 @@ function applySegBL(idx){
            parseFloat(document.getElementById(`bT2-${idx}`)?.value),
            parseFloat(document.getElementById(`bT3-${idx}`)?.value),
            parseFloat(document.getElementById(`bT4-${idx}`)?.value)];
-  if(T.some(isNaN)){alert('T1〜T4をすべて入力してください');return;}
-  if(!(T[0]<T[1]&&T[1]<T[2]&&T[2]<T[3])){alert('T1 < T2 < T3 < T4 になるよう設定してください');return;}
+  if(T.some(isNaN)){alert(t('enterT1T4'));return;}
+  if(!(T[0]<T[1]&&T[1]<T[2]&&T[2]<T[3])){alert(t('validTOrder'));return;}
   const type=(document.getElementById(`btSig-${idx}`)?.classList.contains('on'))?'sigmoid':'linear';
   s.bl={T1:T[0],T2:T[1],T3:T[2],T4:T[3],type};
   s.analyze=true;
@@ -828,12 +987,12 @@ function applyViewSpan(which){
   if(which==='dsc'){
     const xr=parseRange('dscXMin','dscXMax');
     const yr=parseRange('dscYMin','dscYMax');
-    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert('最小値 < 最大値 で入力してください');return;}
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
     dscView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
   }else{
     const xr=parseRange('thXMin','thXMax');
     const yr=parseRange('thYMin','thYMax');
-    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert('最小値 < 最大値 で入力してください');return;}
+    if((xr.min!==null&&!xr.ok)||(yr.min!==null&&!yr.ok)){alert(t('minLessThanMax'));return;}
     thermalView={xMin:xr.min,xMax:xr.max,yMin:yr.min,yMax:yr.max};
   }
   renderChart();
@@ -857,6 +1016,104 @@ function setChartMode(mode,which='both'){
   if(which==='both'||which==='dsc')chartMode.dsc=m;
   if(which==='both'||which==='thermal')chartMode.thermal=m;
   syncModeButtons();
+}
+
+function syncLayoutUI(){
+  const wrap=document.getElementById('chartWrap');
+  const zone=document.getElementById('thermalZone');
+  const segWrap=document.getElementById('segRangeWrap');
+  if(!wrap||!zone||!segWrap)return;
+  wrap.classList.toggle('layout-row',graphLayout==='row');
+  wrap.classList.toggle('layout-col',graphLayout==='col');
+  zone.classList.toggle('table-left',segTablePos==='left');
+  zone.classList.toggle('table-bottom',segTablePos==='bottom');
+  segWrap.classList.toggle('left',segTablePos==='left');
+  segWrap.classList.toggle('bottom',segTablePos==='bottom');
+  wrap.style.setProperty('--thermal-size',`${graphRatio}%`);
+  wrap.style.setProperty('--dsc-size',`${100-graphRatio}%`);
+  const label=document.getElementById('layoutRatioLabel');
+  if(label)label.textContent=`${graphRatio}% / ${100-graphRatio}%`;
+  const slider=document.getElementById('layoutRatio');
+  if(slider&&slider.value!==String(graphRatio))slider.value=String(graphRatio);
+  document.getElementById('btnLayoutRow')?.classList.toggle('on',graphLayout==='row');
+  document.getElementById('btnLayoutCol')?.classList.toggle('on',graphLayout==='col');
+  document.getElementById('btnSegPosLeft')?.classList.toggle('on',segTablePos==='left');
+  document.getElementById('btnSegPosBottom')?.classList.toggle('on',segTablePos==='bottom');
+}
+
+function setGraphLayout(mode){
+  graphLayout=mode==='col'?'col':'row';
+  syncLayoutUI();
+  renderChart();
+}
+
+function setGraphRatio(v){
+  const n=parseInt(v,10);
+  graphRatio=Math.min(75,Math.max(25,isNaN(n)?35:n));
+  syncLayoutUI();
+  renderChart();
+}
+
+function setSegTablePos(pos){
+  segTablePos=pos==='bottom'?'bottom':'left';
+  syncLayoutUI();
+}
+
+function applyLanguage(){
+  document.documentElement.lang=uiLang==='en'?'en':'ja';
+  const set=(id,en,ja)=>{const el=document.getElementById(id);if(el)el.textContent=uiLang==='en'?en:ja;};
+  const dropTextEl=document.getElementById('dropText');
+  if(dropTextEl)dropTextEl.innerHTML=uiLang==='en'?'Drop files (multiple)<br>or':'ファイルをドロップ（複数可）<br>または';
+  set('headerSub','Pyris method-step support - Select segment -> Baseline -> Analyze','Pyris メソッドステップ対応 · セグメント選択 → BL設定 → 解析');
+  set('fileSelectBtn','Select files','ファイルを選択');
+  set('filesTitle','Files','ファイル');
+  set('clearAllBtn','Clear all','全消去');
+  set('displayTitle','Display','表示');
+  set('xAxisLbl','X Axis','X軸');
+  set('heatFlowLbl','Heat Flow','熱流');
+  set('btnTemp','Temperature (degC)','温度 (°C)');
+  set('btnTime','Time (min)','時間 (min)');
+  set('btnHF','Corrected','補正後');
+  set('dscSpanLbl','Display Span (DSC)','表示スパン（DSC）');
+  set('applyDscSpanBtn','Apply DSC span','DSCスパン適用');
+  set('resetDscSpanBtn','Reset DSC','DSCリセット');
+  set('thSpanLbl','Display Span (Thermal)','表示スパン（Thermal）');
+  set('applyThSpanBtn','Apply Thermal span','Thermalスパン適用');
+  set('resetThSpanBtn','Reset Thermal','Thermalリセット');
+  set('graphModeLbl','Graph Interaction Mode','グラフ操作モード');
+  set('btnZoomMode','Zoom','ズーム操作');
+  set('btnLockMode','Lock','固定');
+  set('allDscBtn','DSC only','DSCのみ');
+  set('allThermalBtn','Thermal only','Thermalのみ');
+  set('graphLayoutLbl','Graph Layout','グラフ配置');
+  set('btnLayoutRow','Side by side','横並び');
+  set('btnLayoutCol','Stacked','縦並び');
+  set('ratioLbl','Size Ratio (Thermal / DSC)','サイズ比（Thermal / DSC）');
+  set('segPosLbl','Segment Table Position','セグメント範囲表の位置');
+  set('btnSegPosLeft','Left of thermal','熱履歴の左');
+  set('btnSegPosBottom','Below thermal','熱履歴の下');
+  set('segmentTitle','Method Steps (Segments)','メソッドステップ（セグメント）');
+  set('segHint','Click to expand -> baseline -> run analysis','クリックで展開 → BL設定 → 解析実行');
+  set('analysisOptLbl','Analysis options:','解析オプション：');
+  set('btnPk','Auto peak detect','ピーク自動検出');
+  set('runAnalysisBtn','▶ Run analysis (all segments)','▶ 全セグメント解析実行');
+  set('exportCsvBtn','Export CSV','CSV出力');
+  set('segRangeTitle','Segment Range (Time min)','セグメント範囲（時間 min）');
+  set('applyAllSegBtn','Apply all','一括適用');
+  set('segStartHead','Start','開始');
+  set('segEndHead','End','終了');
+  set('cfoot','Please load files','ファイルを読み込んでください');
+  set('resultsTitle','Results','解析結果');
+  set('resultFileHead','File','ファイル');
+  set('resultTypeHead','Type','種別');
+  const langBtn=document.getElementById('langBtn');
+  if(langBtn)langBtn.textContent=uiLang==='en'?'JP':'EN';
+  refreshUI();
+}
+
+function toggleLanguage(){
+  uiLang=uiLang==='en'?'ja':'en';
+  applyLanguage();
 }
 
 function toggleGraphMode(which){
@@ -1128,8 +1385,8 @@ function runAnalysis(){
 }
 
 function shortDesc(s){
-  if(s.type==='isothermal')return `Step${s.num} 等温`;
-  return `Step${s.num} ${STYPE_LABEL[s.type]||s.type} ${s.tmin.toFixed(0)}→${s.tmax.toFixed(0)}°C`;
+  if(s.type==='isothermal')return uiLang==='en'?`Step${s.num} Isothermal`:`Step${s.num} 等温`;
+  return `Step${s.num} ${(uiLang==='en'?STYPE_LABEL_EN:STYPE_LABEL)[s.type]||s.type} ${s.tmin.toFixed(0)}→${s.tmax.toFixed(0)}°C`;
 }
 
 // ─── Chart render ─────────────────────────────────────────────────────────────
@@ -1251,11 +1508,14 @@ function renderChart(){
     data:{datasets:thermalDatasets},
     options:{
       responsive:true,maintainAspectRatio:false,animation:{duration:100},
-      interaction:{mode:'index',intersect:false},
+      interaction:{mode:'nearest',intersect:false},
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{
-          title:items=>`t = ${(+items[0].parsed.x).toFixed(3)} min`,
+          title:items=>{
+            const x=items?.[0]?.raw?.x ?? items?.[0]?.parsed?.x;
+            return `t = ${(+x).toFixed(3)} min`;
+          },
           label:item=>`${item.dataset.label}: ${(+item.parsed.y).toFixed(2)} °C`
         }}
       },
@@ -1314,9 +1574,12 @@ function renderResults(){
   const unit=xAxis==='temp'?'°C':'min';
   analysisResults.forEach(r=>{
     const hasPeak=r.peakX!==null;
-    const kind=r.segType==='heating'?(r.peakType==='min'?'融解（吸熱）':'結晶化（発熱）'):
-                r.segType==='cooling'?(r.peakType==='max'?'結晶化（発熱）':'融解（吸熱）'):'—';
-    const bc=kind.startsWith('融解')?'melt':'cryst';
+    const kind=r.segType==='heating'
+      ?(r.peakType==='min'?(uiLang==='en'?'Melting (endothermic)':'融解（吸熱）'):(uiLang==='en'?'Crystallization (exothermic)':'結晶化（発熱）'))
+      :r.segType==='cooling'
+        ?(r.peakType==='max'?(uiLang==='en'?'Crystallization (exothermic)':'結晶化（発熱）'):(uiLang==='en'?'Melting (endothermic)':'融解（吸熱）'))
+        :'—';
+    const bc=kind.startsWith('Melting')||kind.startsWith('融解')?'melt':'cryst';
     // onset/end from BL range
     const onset=r.bl?r.bl.T1.toFixed(2):'—';
     const tend=r.bl?r.bl.T4.toFixed(2):'—';
@@ -1324,7 +1587,7 @@ function renderResults(){
       <td><span style="color:${r.color};font-size:14px">●</span></td>
       <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis">${r.fileName.replace(/\.[^.]+$/,'')}</td>
       <td>${r.segDesc}</td>
-      <td>${hasPeak?`<span class="badge ${bc}">${kind}</span>`:'（ピークなし）'}</td>
+      <td>${hasPeak?`<span class="badge ${bc}">${kind}</span>`:(uiLang==='en'?'(No peak)':'（ピークなし）')}</td>
       <td>${onset} ${unit}</td>
       <td>${hasPeak?r.peakX.toFixed(2)+' '+unit:'—'}</td>
       <td>${tend} ${unit}</td>
@@ -1337,7 +1600,7 @@ function renderResults(){
 
 // ─── CSV ──────────────────────────────────────────────────────────────────────
 function exportCSV(){
-  if(!analysisResults.length){alert('先に「解析実行」してください');return;}
+  if(!analysisResults.length){alert(t('runAnalysisFirst'));return;}
   let csv='ファイル,Step,種別,Tonset,Tpeak,Tend,ΔH_Jg,BL種\n';
   document.getElementById('rBody').querySelectorAll('tr').forEach(tr=>{
     const tds=[...tr.querySelectorAll('td')].slice(1).map(td=>td.textContent.trim());
@@ -1349,6 +1612,8 @@ function exportCSV(){
 }
 
 initShortcuts();
+syncLayoutUI();
+applyLanguage();
 </script>
 </body>
 </html>
