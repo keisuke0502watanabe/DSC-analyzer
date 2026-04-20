@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DSC Analyzer Multiple</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0efe9;color:#1a1a1a;font-size:13px}
+.header{background:#1a1a1a;color:#fff;padding:.8rem 1.2rem;display:flex;align-items:center;gap:10px}
+.header h1{font-size:15px;font-weight:500}
+.wrap{max-width:1560px;margin:0 auto;padding:1rem}
+.panel{background:#fff;border-radius:10px;padding:.85rem 1rem;border:1px solid #e4e4e0;margin-bottom:.75rem}
+.ptitle{font-size:11px;font-weight:500;color:#999;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid #f0f0ee}
+.dz{border:1.5px dashed #d0d0c8;border-radius:10px;padding:1rem;text-align:center;background:#fff;transition:all .18s;cursor:pointer}
+.dz:hover,.dz.drag{border-color:#378ADD;background:#f0f7ff}
+.dz p{font-size:12px;color:#777;margin-bottom:.6rem}
+input[type=file]{display:none}
+.btn{font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid #d4d4cc;background:#fff;color:#444;cursor:pointer;transition:all .14s}
+.btn:hover{background:#f5f5f2}
+.btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.btn.warn{border-color:#E24B4A;color:#E24B4A}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap}
+.lbl{font-size:10px;color:#888;margin-top:8px;margin-bottom:3px}
+.mini{font-size:10px;color:#999}
+.num{width:100%;font-size:11px;padding:2px 5px;border:1px solid #ddd;border-radius:4px}
+
+.charts-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.chart-outer{background:#fff;border-radius:10px;border:1px solid #e4e4e0;overflow:hidden}
+.chart-head{padding:.6rem .8rem;border-bottom:1px solid #f0f0ee;background:#fafaf8;display:flex;align-items:center;gap:8px}
+.chart-title{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.chart-body{display:grid;grid-template-columns:300px 1fr;gap:10px;padding:.8rem}
+.chart-body.sidebar-hidden{grid-template-columns:1fr}
+.chart-body.sidebar-hidden .sidebar-wrap{display:none}
+.sidebar-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sidebar-card{border:1px solid #ecece7;border-radius:8px;padding:7px;background:#fff}
+.seg-list{max-height:220px;overflow:auto;border:1px solid #efefea;border-radius:8px;background:#fff}
+.seg-item{padding:6px 8px;border-bottom:1px solid #f5f5f2;display:flex;gap:6px;align-items:flex-start;font-size:11px}
+.seg-item:last-child{border-bottom:none}
+.seg-text{flex:1;line-height:1.3}
+.seg-ctl{display:flex;gap:6px;align-items:center}
+.seg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:4px}
+.chart-stack{display:grid;gap:10px}
+.chart-stack.col{grid-template-rows:var(--dsc-ratio,55%) var(--th-ratio,45%);grid-template-columns:1fr}
+.chart-stack.row{grid-template-columns:var(--dsc-ratio,55%) var(--th-ratio,45%);grid-template-rows:1fr}
+.chart-pane{background:#fff;border:1px solid #f0f0ee;border-radius:8px;padding:.4rem}
+.pane-title{font-size:10px;color:#888;margin-bottom:4px}
+.canvas-wrap{position:relative;height:100%}
+.zoom-box{position:absolute;border:1.5px dashed #378ADD;background:rgba(55,138,221,.12);display:none;pointer-events:none;z-index:2}
+canvas{width:100%;height:100%}
+
+.outer-wrap{margin-top:1rem}
+.outer-placeholder{font-size:12px;color:#888;padding:.75rem;border:1px dashed #d8d8d2;border-radius:8px;background:#fafaf8}
+
+@media (max-width: 980px){
+  .chart-body{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>DSC Analyzer Multiple</h1>
+</div>
+<div class="wrap">
+  <div class="panel">
+    <div class="ptitle">Input</div>
+    <div class="dz" id="dz">
+      <p>Drop multiple files, or choose files</p>
+      <input type="file" id="fileIn" accept=".txt,.csv" multiple>
+      <input type="file" id="projectIn" accept=".json" style="display:none">
+      <input type="file" id="dataIn" accept=".json" style="display:none">
+      <button class="btn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">Select Files</button>
+    </div>
+    <div class="btn-row" style="margin-top:.65rem">
+      <button class="btn" onclick="saveProjectLocal()">Save Project</button>
+      <button class="btn" onclick="loadProjectLocal()">Load Project</button>
+      <button class="btn" onclick="exportProjectJson()">Export Project JSON</button>
+      <button class="btn" onclick="document.getElementById('projectIn').click()">Import Project JSON</button>
+      <button class="btn" onclick="exportDataJson()">Export Data JSON</button>
+      <button class="btn" onclick="loadDataLocal()">Load Data (Local)</button>
+      <button class="btn" onclick="document.getElementById('dataIn').click()">Import Data JSON</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ptitle">Outer Chart (Combined)</div>
+    <div class="outer-wrap" id="outerWrap"></div>
+  </div>
+  <div class="charts-grid" id="chartsGrid"></div>
+</div>
+<script>
+const FC=['#378ADD','#D85A30','#7F77DD','#1D9E75','#BA7517','#D4537E','#888780','#639922'];
+const STYPE_COLOR={heating:'#D85A30',cooling:'#378ADD',isothermal:'#888780'};
+let files=[];
+let nextFid=1;
+let outerChart=null;
+let outerSidebarOpen=true;
+let outerXAxis='temp';
+let outerHeight=420;
+let outerView={xMin:null,xMax:null,yMin:null,yMax:null};
+let outerBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+
+const dz=document.getElementById('dz');
+dz.addEventListener('click',()=>document.getElementById('fileIn').click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');[...e.dataTransfer.files].forEach(loadFile);});
+document.getElementById('fileIn').addEventListener('change',e=>{[...e.target.files].forEach(loadFile);e.target.value='';});
+document.getElementById('projectIn').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectJson(file);e.target.value='';});
+document.getElementById('dataIn').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importDataJson(file);e.target.value='';});
+
+function downloadText(filename,text){
+  const blob=new Blob([text],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();
+  URL.revokeObjectURL(url);
+}
+function getDateStamp(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function chartToPngDataUrl(chart){
+  if(!chart)return null;
+  chart.resize();
+  return chart.toBase64Image('image/png',1);
+}
+function exportChartImage(chart,filenameBase,format='png'){
+  const dataUrl=chartToPngDataUrl(chart);
+  if(!dataUrl){alert('Chart not ready');return;}
+  if(format==='png'){
+    const a=document.createElement('a');
+    a.href=dataUrl;a.download=`${filenameBase}.png`;a.click();
+    return;
+  }
+  const jsPdfObj=window.jspdf?.jsPDF;
+  if(!jsPdfObj){alert('PDF library is not available.');return;}
+  const img=new Image();
+  img.onload=()=>{
+    const pdf=new jsPdfObj({orientation:img.width>img.height?'landscape':'portrait',unit:'pt',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth();
+    const ph=pdf.internal.pageSize.getHeight();
+    const scale=Math.min((pw-40)/img.width,(ph-40)/img.height);
+    const w=img.width*scale,h=img.height*scale,x=(pw-w)/2,y=(ph-h)/2;
+    pdf.addImage(dataUrl,'PNG',x,y,w,h);
+    pdf.save(`${filenameBase}.pdf`);
+  };
+  img.src=dataUrl;
+}
+
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function zoomRange(min,max,center,factor,bMin,bMax){
+  if(!isFinite(min)||!isFinite(max)||max<=min)return[min,max];
+  const c=clamp(center,min,max);
+  const span=(max-min)*factor;
+  let nMin=c-(c-min)*factor;
+  let nMax=nMin+span;
+  if(isFinite(bMin)&&nMin<bMin){nMax+=bMin-nMin;nMin=bMin;}
+  if(isFinite(bMax)&&nMax>bMax){nMin-=nMax-bMax;nMax=bMax;}
+  if(nMax<=nMin)return[min,max];
+  return[nMin,nMax];
+}
+function getChartPointer(e,ch){
+  if(!ch||!ch.chartArea)return null;
+  const p=Chart.helpers.getRelativePosition(e,ch);
+  if(!p||!isFinite(p.x)||!isFinite(p.y))return null;
+  const a=ch.chartArea;
+  if(p.x<a.left||p.x>a.right||p.y<a.top||p.y>a.bottom)return null;
+  return p;
+}
+function bindWheelZoom(canvas,chartRef,view,bounds,modeGetter,onChange){
+  if(!canvas||canvas.dataset.zoomBound==='1')return;
+  canvas.dataset.zoomBound='1';
+  canvas.addEventListener('wheel',e=>{
+    if(modeGetter()!=='zoom')return;
+    const ch=chartRef();if(!ch)return;
+    const p=getChartPointer(e,ch);if(!p)return;
+    e.preventDefault();
+    const zf=e.deltaY<0?0.85:1.18;
+    if(e.altKey){
+      const sc=ch.scales.y;
+      const c=sc.getValueForPixel(p.y);
+      const curMin=view.yMin??sc.min,curMax=view.yMax??sc.max;
+      const next=zoomRange(curMin,curMax,c,zf,bounds.yMin,bounds.yMax);
+      view.yMin=next[0];view.yMax=next[1];
+    }else{
+      const sc=ch.scales.x;
+      const c=sc.getValueForPixel(p.x);
+      const curMin=view.xMin??sc.min,curMax=view.xMax??sc.max;
+      const next=zoomRange(curMin,curMax,c,zf,bounds.xMin,bounds.xMax);
+      view.xMin=next[0];view.xMax=next[1];
+    }
+    onChange();
+  },{passive:false});
+}
+function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl,onChange){
+  if(!canvas||canvas.dataset.dragZoomBound==='1')return;
+  canvas.dataset.dragZoomBound='1';
+  const st={active:false,sx:0,sy:0};
+  canvas.addEventListener('mousedown',e=>{
+    if(modeGetter()!=='zoom'||e.button!==0)return;
+    const ch=chartRef();if(!ch)return;
+    const p=getChartPointer(e,ch);if(!p)return;
+    st.active=true;st.sx=p.x;st.sy=p.y;
+    if(boxEl){boxEl.style.display='block';boxEl.style.left=`${st.sx}px`;boxEl.style.top=`${st.sy}px`;boxEl.style.width='0px';boxEl.style.height='0px';}
+  });
+  canvas.addEventListener('mousemove',e=>{
+    if(!st.active||!boxEl)return;
+    const ch=chartRef();if(!ch)return;
+    const p=Chart.helpers.getRelativePosition(e,ch);if(!p)return;
+    const x=Math.min(st.sx,p.x),y=Math.min(st.sy,p.y),w=Math.abs(p.x-st.sx),h=Math.abs(p.y-st.sy);
+    boxEl.style.left=`${x}px`;boxEl.style.top=`${y}px`;boxEl.style.width=`${w}px`;boxEl.style.height=`${h}px`;
+  });
+  canvas.addEventListener('mouseup',e=>{
+    if(!st.active)return;
+    st.active=false;
+    if(boxEl)boxEl.style.display='none';
+    const ch=chartRef();if(!ch)return;
+    const p=Chart.helpers.getRelativePosition(e,ch);if(!p)return;
+    if(Math.abs(p.x-st.sx)<6||Math.abs(p.y-st.sy)<6)return;
+    const sx=ch.scales.x, sy=ch.scales.y;
+    const x1=sx.getValueForPixel(st.sx), x2=sx.getValueForPixel(p.x);
+    const y1=sy.getValueForPixel(st.sy), y2=sy.getValueForPixel(p.y);
+    view.xMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);
+    view.xMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);
+    view.yMin=clamp(Math.min(y1,y2),bounds.yMin,bounds.yMax);
+    view.yMax=clamp(Math.max(y1,y2),bounds.yMin,bounds.yMax);
+    onChange();
+  });
+  canvas.addEventListener('mouseleave',()=>{st.active=false;if(boxEl)boxEl.style.display='none';});
+}
+
+function loadFile(file){
+  const r=new FileReader();
+  r.onload=e=>parse(e.target.result,file.name);
+  r.readAsText(file,'UTF-8');
+}
+function parse(txt,fname){
+  const lines=txt.split('\n');
+  const meta={};const methodSteps=[];let dataStart=-1;
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/^\s*Time\s+Unsubtracted/i.test(l)){dataStart=i+2;break;}
+    const kv=l.split('\t');
+    if(kv.length>=2){const k=kv[0].trim().replace(/:$/,'');const v=kv.slice(1).join('\t').trim();if(k&&v)meta[k]=v;}
+    const scanMatch=l.match(/^(\d+)\)\s*(Cool|Heat)\s+from\s+([-\d.]+).C\s+to\s+([-\d.]+).C\s+at\s+([\d.]+).C\/min/i);
+    if(scanMatch)methodSteps.push({num:+scanMatch[1],type:scanMatch[2].toLowerCase()==='heat'?'heating':'cooling',fromT:+scanMatch[3],toT:+scanMatch[4],rate:+scanMatch[5],duration:null});
+    const holdMatch=l.match(/^(\d+)\)\s*Hold\s+for\s+([\d.]+)\s*min\s+at\s+([-\d.]+).C/i);
+    if(holdMatch)methodSteps.push({num:+holdMatch[1],type:'isothermal',fromT:+holdMatch[3],toT:+holdMatch[3],rate:0,duration:+holdMatch[2]});
+  }
+  if(dataStart<0){alert(`${fname}: Data columns not found`);return;}
+  const rows=[];
+  for(let i=dataStart;i<lines.length;i++){
+    const c=lines[i].trim().split(/\t/);if(c.length<5)continue;
+    const n=c.map(v=>parseFloat(v.trim()));if(n.slice(0,5).some(isNaN))continue;
+    rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
+  }
+  if(!rows.length){alert(`${fname}: No numeric data`);return;}
+  const segments=assignSegments(rows,methodSteps).map((s,idx)=>({...s,idx,visible:true,selectedOuter:false,dOffset:0,yGain:1,outerOffset:0,outerGain:1,outerColor:'',outerLabel:''}));
+  const id=nextFid++;
+  files.push({
+    id,name:fname,color:FC[(files.length)%FC.length],data:rows,segments,meta,
+    dscChart:null,thermalChart:null,sidebarOpen:true,mode:'zoom',
+    dscX:'temp',
+    dscView:{xMin:null,xMax:null,yMin:null,yMax:null},
+    thermalView:{xMin:null,xMax:null,yMin:null,yMax:null},
+    dscBounds:{xMin:0,xMax:1,yMin:0,yMax:1},
+    thermalBounds:{xMin:0,xMax:1,yMin:0,yMax:1},
+    chartLayout:'col',
+    chartScale:100,
+    splitRatio:55
+  });
+  renderAll();
+}
+function assignSegments(rows,methodSteps){
+  if(!methodSteps.length)return autoSegments(rows);
+  const N=rows.length,segments=[],time0=rows[0].time,time1=rows[N-1].time,measuredTotal=Math.max(1e-6,time1-time0);
+  const rawDur=methodSteps.map(st=>st.type==='isothermal'?Math.max(0,st.duration||0):((!isFinite(st.rate)||st.rate<=0)?0:Math.max(0,Math.abs(st.toT-st.fromT)/st.rate)));
+  let predTotal=rawDur.reduce((a,b)=>a+b,0);if(!isFinite(predTotal)||predTotal<=0)predTotal=measuredTotal;
+  const scale=measuredTotal/predTotal,cumEnds=[];let acc=0;rawDur.map(d=>Math.max(0,d*scale)).forEach(d=>{acc+=d;cumEnds.push(acc);});
+  let cursor=0;
+  methodSteps.forEach((step,si)=>{
+    if(cursor>=N-1)return;
+    let endIdx=si===methodSteps.length-1?N-1:Math.max(cursor+5,Math.min(nearestTimeIndex(rows,time0+cumEnds[si]),N-2));
+    if(endIdx<=cursor)endIdx=Math.min(cursor+10,N-1);
+    const sl=rows.slice(cursor,endIdx+1);
+    segments.push({...step,start:cursor,end:endIdx,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[cursor].time,tEnd:rows[endIdx].time});
+    cursor=endIdx+1;
+  });
+  if(!segments.length)return autoSegments(rows);
+  const last=segments[segments.length-1];
+  if(last.end<N-1){last.end=N-1;const sl=rows.slice(last.start,last.end+1);last.tmin=Math.min(...sl.map(r=>r.temp));last.tmax=Math.max(...sl.map(r=>r.temp));last.tEnd=rows[last.end].time;}
+  return segments;
+}
+function autoSegments(rows){
+  const segs=[];let dir=0,ss=0,idx=0;const sm=10;
+  const ld=i=>rows[Math.min(rows.length-1,i+sm)].temp-rows[Math.max(0,i-sm)].temp;
+  for(let i=sm;i<rows.length-sm;i+=5){
+    const d=ld(i),nd=Math.abs(d)<0.5?0:(d>0?1:-1);
+    if(nd!==dir&&i-ss>100){
+      if(i-ss>200){
+        const sl=rows.slice(ss,i),tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+        segs.push({num:idx+1,type:tp,start:ss,end:i-1,rate:15,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[ss].time,tEnd:rows[i-1].time});
+        idx++;
+      }
+      ss=i;dir=nd;
+    }
+  }
+  if(rows.length-ss>200){
+    const sl=rows.slice(ss),tp=dir===1?'heating':dir===-1?'cooling':'isothermal';
+    segs.push({num:idx+1,type:tp,start:ss,end:rows.length-1,rate:15,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[ss].time,tEnd:rows[rows.length-1].time});
+  }
+  return segs;
+}
+function nearestTimeIndex(rows,t){
+  if(!rows.length)return -1;
+  if(t<=rows[0].time)return 0;if(t>=rows[rows.length-1].time)return rows.length-1;
+  let lo=0,hi=rows.length-1;while(lo<hi-1){const m=(lo+hi)>>1;if(rows[m].time<=t)lo=m;else hi=m;}
+  return Math.abs(rows[lo].time-t)<=Math.abs(rows[hi].time-t)?lo:hi;
+}
+function getSegPts(f,s,step=3,xMode='temp',useOuterAdjust=false){
+  return f.data.slice(s.start,s.end+1).filter((_,j)=>j%step===0).map(r=>{
+    const x=xMode==='temp'?+r.temp.toFixed(3):+r.time.toFixed(4);
+    let y=r.hf;
+    if(useOuterAdjust)y=y*s.outerGain+s.outerOffset;
+    else y=y*s.yGain+s.dOffset;
+    return{x,y:+y.toFixed(5)};
+  });
+}
+function defaultOuterLabel(f,s){
+  return `${f.name.replace(/\.[^.]+$/,'')} / Step${s.num}`;
+}
+function defaultOuterColor(f,s){
+  return STYPE_COLOR[s.type]||f.color;
+}
+
+function renderAll(){renderOuterChart();renderFileOuters();}
+
+function renderFileOuters(){
+  const grid=document.getElementById('chartsGrid');
+  grid.innerHTML='';
+  files.forEach(f=>{
+    const outer=document.createElement('div');
+    outer.className='chart-outer';
+    const isRow=f.chartLayout==='row';
+    const baseHeight=isRow?360:660;
+    const stackHeight=Math.max(300,Math.round(baseHeight*(f.chartScale/100)));
+    const split=clamp(f.splitRatio,20,80);
+    const dscRatio=`${split}%`;
+    const thRatio=`${100-split}%`;
+    outer.innerHTML=`
+      <div class="chart-head">
+        <div class="chart-title">${f.name}</div>
+        <button class="btn" onclick="exportFileChart(${f.id},'dsc','png')">DSC PNG</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'dsc','pdf')">DSC PDF</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'thermal','png')">TH PNG</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'thermal','pdf')">TH PDF</button>
+        <button class="btn" onclick="toggleFileSidebar(${f.id})">${f.sidebarOpen?'Hide Sidebar':'Show Sidebar'}</button>
+        <button class="btn warn" onclick="removeFile(${f.id})">Remove</button>
+      </div>
+      <div class="chart-body ${f.sidebarOpen?'':'sidebar-hidden'}">
+        <div class="sidebar-wrap">${renderFileSidebarHtml(f)}</div>
+        <div class="chart-stack ${isRow?'row':'col'}" style="height:${stackHeight}px;--dsc-ratio:${dscRatio};--th-ratio:${thRatio}">
+          <div class="chart-pane">
+            <div class="pane-title">DSC</div>
+            <div class="canvas-wrap"><div class="zoom-box" id="dscZoomBox-${f.id}"></div><canvas id="dscCvs-${f.id}"></canvas></div>
+          </div>
+          <div class="chart-pane">
+            <div class="pane-title">Thermal</div>
+            <div class="canvas-wrap"><div class="zoom-box" id="thZoomBox-${f.id}"></div><canvas id="thCvs-${f.id}"></canvas></div>
+          </div>
+        </div>
+      </div>`;
+    grid.appendChild(outer);
+    renderFileCharts(f);
+  });
+}
+function renderFileSidebarHtml(f){
+  const selectedCount=f.segments.filter(s=>s.selectedOuter).length;
+  return `
+    <div class="sidebar-card">
+      <div class="lbl">Mode / X Axis</div>
+      <div class="btn-row">
+        <button class="btn ${f.mode==='zoom'?'on':''}" onclick="setFileMode(${f.id},'zoom')">Zoom</button>
+        <button class="btn ${f.mode==='lock'?'on':''}" onclick="setFileMode(${f.id},'lock')">Lock</button>
+        <button class="btn ${f.dscX==='temp'?'on':''}" onclick="setFileX(${f.id},'temp')">X:Temp</button>
+        <button class="btn ${f.dscX==='time'?'on':''}" onclick="setFileX(${f.id},'time')">X:Time</button>
+      </div>
+      <div class="lbl">Zoom Buttons</div>
+      <div class="btn-row">
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','x',0.85)">DSC X+</button>
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','x',1.18)">DSC X-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','y',0.85)">DSC Y+</button>
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','y',1.18)">DSC Y-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','x',0.85)">TH X+</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','x',1.18)">TH X-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','y',0.85)">TH Y+</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','y',1.18)">TH Y-</button>
+      </div>
+      <div class="btn-row"><button class="btn" onclick="resetFileView(${f.id},'dsc')">Reset DSC</button><button class="btn" onclick="resetFileView(${f.id},'thermal')">Reset TH</button></div>
+      <div class="lbl">Layout / Size Ratio</div>
+      <div class="btn-row">
+        <button class="btn ${f.chartLayout==='col'?'on':''}" onclick="setFileLayout(${f.id},'col')">Vertical</button>
+        <button class="btn ${f.chartLayout==='row'?'on':''}" onclick="setFileLayout(${f.id},'row')">Horizontal</button>
+      </div>
+      <div class="mini">Overall Scale (%)</div><input class="num" type="number" value="${f.chartScale}" min="60" max="180" onchange="setFileScale(${f.id},this.value)">
+      <div class="mini">DSC / TH Split (DSC%)</div><input class="num" type="number" value="${f.splitRatio}" min="20" max="80" onchange="setFileSplitRatio(${f.id},this.value)">
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Display Span DSC</div>
+      <div class="seg-grid">
+        <input class="num" id="fxMin-${f.id}" placeholder="x min" value="${fmt(f.dscView.xMin,3)}">
+        <input class="num" id="fxMax-${f.id}" placeholder="x max" value="${fmt(f.dscView.xMax,3)}">
+        <input class="num" id="fyMin-${f.id}" placeholder="y min" value="${fmt(f.dscView.yMin,4)}">
+        <input class="num" id="fyMax-${f.id}" placeholder="y max" value="${fmt(f.dscView.yMax,4)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyFileSpan(${f.id},'dsc')">Apply</button></div>
+      <div class="lbl">Display Span Thermal</div>
+      <div class="seg-grid">
+        <input class="num" id="ftxMin-${f.id}" placeholder="x min" value="${fmt(f.thermalView.xMin,3)}">
+        <input class="num" id="ftxMax-${f.id}" placeholder="x max" value="${fmt(f.thermalView.xMax,3)}">
+        <input class="num" id="ftyMin-${f.id}" placeholder="y min" value="${fmt(f.thermalView.yMin,3)}">
+        <input class="num" id="ftyMax-${f.id}" placeholder="y max" value="${fmt(f.thermalView.yMax,3)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyFileSpan(${f.id},'thermal')">Apply</button></div>
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Segments (Visible / Outer / Offset / Gain)</div>
+      <div class="seg-list">
+        ${f.segments.map(s=>`
+          <div class="seg-item">
+            <div class="seg-ctl">
+              <input type="checkbox" ${s.visible?'checked':''} onchange="toggleSegVisible(${f.id},${s.idx},this.checked)" title="Visible">
+              <input type="checkbox" ${s.selectedOuter?'checked':''} onchange="toggleSegOuter(${f.id},${s.idx},this.checked)" title="Outer">
+            </div>
+            <div class="seg-text">
+              <div><strong>Step ${s.num}</strong> <span class="mini">${s.type}</span></div>
+              <div class="mini">T:${s.tmin.toFixed(1)}→${s.tmax.toFixed(1)} / t:${s.tStart.toFixed(2)}→${s.tEnd.toFixed(2)}</div>
+              <div class="seg-grid">
+                <input class="num" type="number" value="${s.dOffset}" step="0.05" onchange="setSegOffset(${f.id},${s.idx},this.value)">
+                <input class="num" type="number" value="${s.yGain}" step="0.05" min="0.05" onchange="setSegGain(${f.id},${s.idx},this.value)">
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="mini" style="margin-top:4px">Outer selected: ${selectedCount} segments</div>
+    </div>`;
+}
+function fmt(v,d){return isFinite(v)?(+v).toFixed(d):'';}
+function renderFileCharts(f){
+  const dscCvs=document.getElementById(`dscCvs-${f.id}`);
+  const thCvs=document.getElementById(`thCvs-${f.id}`);
+  if(!dscCvs||!thCvs)return;
+  if(f.dscChart)f.dscChart.destroy();
+  if(f.thermalChart)f.thermalChart.destroy();
+  const vis=f.segments.filter(s=>s.visible);
+  const dscDatasets=[];const thermalDatasets=[];
+  const dscBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  const thBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  vis.forEach(s=>{
+    const dpts=getSegPts(f,s,3,f.dscX,false);
+    const tpts=f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>({x:+r.time.toFixed(4),y:+r.temp.toFixed(3)}));
+    dpts.forEach(p=>{dscBounds.xMin=Math.min(dscBounds.xMin,p.x);dscBounds.xMax=Math.max(dscBounds.xMax,p.x);dscBounds.yMin=Math.min(dscBounds.yMin,p.y);dscBounds.yMax=Math.max(dscBounds.yMax,p.y);});
+    tpts.forEach(p=>{thBounds.xMin=Math.min(thBounds.xMin,p.x);thBounds.xMax=Math.max(thBounds.xMax,p.x);thBounds.yMin=Math.min(thBounds.yMin,p.y);thBounds.yMax=Math.max(thBounds.yMax,p.y);});
+    dscDatasets.push({label:`Step${s.num}`,data:dpts,borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
+    thermalDatasets.push({label:`Step${s.num}`,data:tpts,borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
+  });
+  if(!isFinite(dscBounds.xMin))Object.assign(dscBounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  if(!isFinite(thBounds.xMin))Object.assign(thBounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  f.dscBounds=dscBounds;f.thermalBounds=thBounds;
+  f.dscChart=new Chart(dscCvs,{type:'line',data:{datasets:dscDatasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,position:'top'}},scales:{x:{type:'linear',min:f.dscView.xMin??undefined,max:f.dscView.xMax??undefined,title:{display:true,text:f.dscX==='temp'?'Temperature (°C)':'Time (min)'}},y:{min:f.dscView.yMin??undefined,max:f.dscView.yMax??undefined,title:{display:true,text:'Heat Flow (mW/mg)'}}}}});
+  f.thermalChart=new Chart(thCvs,{type:'line',data:{datasets:thermalDatasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,position:'top'}},scales:{x:{type:'linear',min:f.thermalView.xMin??undefined,max:f.thermalView.xMax??undefined,title:{display:true,text:'Time (min)'}},y:{min:f.thermalView.yMin??undefined,max:f.thermalView.yMax??undefined,title:{display:true,text:'Temperature (°C)'}}}}});
+  bindWheelZoom(dscCvs,()=>f.dscChart,f.dscView,f.dscBounds,()=>f.mode,()=>renderFileOuters());
+  bindWheelZoom(thCvs,()=>f.thermalChart,f.thermalView,f.thermalBounds,()=>f.mode,()=>renderFileOuters());
+  bindDragZoom(dscCvs,()=>f.dscChart,f.dscView,f.dscBounds,()=>f.mode,document.getElementById(`dscZoomBox-${f.id}`),()=>renderFileOuters());
+  bindDragZoom(thCvs,()=>f.thermalChart,f.thermalView,f.thermalBounds,()=>f.mode,document.getElementById(`thZoomBox-${f.id}`),()=>renderFileOuters());
+}
+
+function findFile(fid){return files.find(f=>f.id===fid)||null;}
+function calcThermalBoundsFromVisible(f){
+  const vis=f.segments.filter(s=>s.visible);
+  const b={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  vis.forEach(s=>{
+    for(let i=s.start;i<=s.end;i+=3){
+      const r=f.data[i];
+      if(!r)continue;
+      if(r.time<b.xMin)b.xMin=r.time;
+      if(r.time>b.xMax)b.xMax=r.time;
+      if(r.temp<b.yMin)b.yMin=r.temp;
+      if(r.temp>b.yMax)b.yMax=r.temp;
+    }
+  });
+  if(!isFinite(b.xMin))return{xMin:0,xMax:1,yMin:0,yMax:1};
+  return b;
+}
+function removeFile(fid){
+  const f=findFile(fid);if(!f)return;
+  if(f.dscChart)f.dscChart.destroy();
+  if(f.thermalChart)f.thermalChart.destroy();
+  files=files.filter(x=>x.id!==fid);
+  renderAll();
+}
+function toggleFileSidebar(fid){const f=findFile(fid);if(!f)return;f.sidebarOpen=!f.sidebarOpen;renderFileOuters();}
+function setFileMode(fid,mode){const f=findFile(fid);if(!f)return;f.mode=mode==='lock'?'lock':'zoom';renderFileOuters();}
+function setFileX(fid,mode){const f=findFile(fid);if(!f)return;f.dscX=mode==='time'?'time':'temp';f.dscView={xMin:null,xMax:null,yMin:null,yMax:null};renderFileOuters();}
+function setFileLayout(fid,layout){const f=findFile(fid);if(!f)return;f.chartLayout=layout==='row'?'row':'col';renderFileOuters();}
+function setFileScale(fid,v){const f=findFile(fid);if(!f)return;const n=parseInt(v,10);f.chartScale=clamp(isNaN(n)?100:n,60,180);renderFileOuters();}
+function setFileSplitRatio(fid,v){const f=findFile(fid);if(!f)return;const n=parseInt(v,10);f.splitRatio=clamp(isNaN(n)?55:n,20,80);renderFileOuters();}
+function toggleSegVisible(fid,idx,checked){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.visible=!!checked;renderFileOuters();}
+function toggleSegOuter(fid,idx,checked){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.selectedOuter=!!checked;renderAll();}
+function setSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.dOffset=isNaN(n)?0:n;renderFileOuters();}
+function setSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.yGain=(isNaN(n)||n<=0)?1:n;renderFileOuters();}
+function resetFileView(fid,which){
+  const f=findFile(fid);if(!f)return;
+  if(which==='dsc')f.dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  else{
+    // Explicitly rescale both axes to current visible thermal data.
+    const b=calcThermalBoundsFromVisible(f);
+    const yPad=Math.max(0.5,(b.yMax-b.yMin)*0.05);
+    f.thermalView={xMin:b.xMin,xMax:b.xMax,yMin:b.yMin-yPad,yMax:b.yMax+yPad};
+  }
+  renderFileOuters();
+}
+function zoomFile(fid,which,axis,factor){
+  const f=findFile(fid);if(!f)return;
+  const chart=which==='dsc'?f.dscChart:f.thermalChart;
+  const view=which==='dsc'?f.dscView:f.thermalView;
+  const bounds=which==='dsc'?f.dscBounds:f.thermalBounds;
+  if(!chart)return;
+  const sx=chart.scales.x, sy=chart.scales.y;
+  if(axis==='x'){
+    const c=(sx.min+sx.max)/2;
+    const curMin=view.xMin??sx.min, curMax=view.xMax??sx.max;
+    const next=zoomRange(curMin,curMax,c,factor,bounds.xMin,bounds.xMax);
+    view.xMin=next[0];view.xMax=next[1];
+  }else{
+    const c=(sy.min+sy.max)/2;
+    const curMin=view.yMin??sy.min, curMax=view.yMax??sy.max;
+    const next=zoomRange(curMin,curMax,c,factor,bounds.yMin,bounds.yMax);
+    view.yMin=next[0];view.yMax=next[1];
+  }
+  renderFileOuters();
+}
+function applyFileSpan(fid,which){
+  const f=findFile(fid);if(!f)return;
+  if(which==='dsc'){
+    const xMin=parseFloat(document.getElementById(`fxMin-${fid}`).value),xMax=parseFloat(document.getElementById(`fxMax-${fid}`).value),yMin=parseFloat(document.getElementById(`fyMin-${fid}`).value),yMax=parseFloat(document.getElementById(`fyMax-${fid}`).value);
+    f.dscView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};
+  }else{
+    const xMin=parseFloat(document.getElementById(`ftxMin-${fid}`).value),xMax=parseFloat(document.getElementById(`ftxMax-${fid}`).value),yMin=parseFloat(document.getElementById(`ftyMin-${fid}`).value),yMax=parseFloat(document.getElementById(`ftyMax-${fid}`).value);
+    f.thermalView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};
+  }
+  renderFileOuters();
+}
+
+function selectedOuterSegs(){
+  const arr=[];
+  files.forEach(f=>f.segments.filter(s=>s.selectedOuter).forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));
+  return arr;
+}
+function renderOuterChart(){
+  const wrap=document.getElementById('outerWrap');
+  const sel=selectedOuterSegs();
+  if(!sel.length){
+    if(outerChart){outerChart.destroy();outerChart=null;}
+    wrap.innerHTML='<div class="outer-placeholder">Turn on "Outer" for any segment to show it here.</div>';
+    return;
+  }
+  wrap.innerHTML=`
+    <div class="chart-outer">
+      <div class="chart-head">
+        <div class="chart-title">Outer Chart (${sel.length} segments)</div>
+        <button class="btn" onclick="exportOuterChart('png')">PNG</button>
+        <button class="btn" onclick="exportOuterChart('pdf')">PDF</button>
+        <button class="btn" onclick="toggleOuterSidebar()">${outerSidebarOpen?'Hide Sidebar':'Show Sidebar'}</button>
+      </div>
+      <div class="chart-body ${outerSidebarOpen?'':'sidebar-hidden'}">
+        <div class="sidebar-wrap">${renderOuterSidebarHtml(sel)}</div>
+        <div class="chart-pane" style="height:${outerHeight}px">
+          <div class="pane-title">Combined DSC</div>
+          <div class="canvas-wrap"><div class="zoom-box" id="outerZoomBox"></div><canvas id="outerChartCvs"></canvas></div>
+        </div>
+      </div>
+    </div>`;
+  const datasets=[];const bounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  sel.forEach(({f,s})=>{
+    const pts=getSegPts(f,s,3,outerXAxis,true);
+    pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});
+    datasets.push({label:(s.outerLabel||defaultOuterLabel(f,s)),data:pts,borderColor:(s.outerColor||defaultOuterColor(f,s)),borderWidth:1.8,pointRadius:0,tension:0.1,fill:false});
+  });
+  if(!isFinite(bounds.xMin))Object.assign(bounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  outerBounds=bounds;
+  if(outerChart)outerChart.destroy();
+  outerChart=new Chart(document.getElementById('outerChartCvs'),{type:'line',data:{datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,position:'top'}},scales:{x:{type:'linear',min:outerView.xMin??undefined,max:outerView.xMax??undefined,title:{display:true,text:outerXAxis==='temp'?'Temperature (°C)':'Time (min)'}},y:{min:outerView.yMin??undefined,max:outerView.yMax??undefined,title:{display:true,text:'Heat Flow (mW/mg)'}}}}});
+  bindWheelZoom(document.getElementById('outerChartCvs'),()=>outerChart,outerView,outerBounds,()=>'zoom',()=>renderOuterChart());
+  bindDragZoom(document.getElementById('outerChartCvs'),()=>outerChart,outerView,outerBounds,()=>'zoom',document.getElementById('outerZoomBox'),()=>renderOuterChart());
+}
+function renderOuterSidebarHtml(sel){
+  return `
+    <div class="sidebar-card">
+      <div class="lbl">X Axis / Zoom / Size</div>
+      <div class="btn-row">
+        <button class="btn ${outerXAxis==='temp'?'on':''}" onclick="setOuterX('temp')">X:Temp</button>
+        <button class="btn ${outerXAxis==='time'?'on':''}" onclick="setOuterX('time')">X:Time</button>
+        <button class="btn" onclick="resetOuterView()">Reset</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="zoomOuter('x',0.85)">X+</button><button class="btn" onclick="zoomOuter('x',1.18)">X-</button>
+        <button class="btn" onclick="zoomOuter('y',0.85)">Y+</button><button class="btn" onclick="zoomOuter('y',1.18)">Y-</button>
+      </div>
+      <div class="mini">Height</div><input class="num" type="number" min="260" max="1000" value="${outerHeight}" onchange="setOuterHeight(this.value)">
+      <div class="lbl">Display Span</div>
+      <div class="seg-grid">
+        <input class="num" id="oxMin" placeholder="x min" value="${fmt(outerView.xMin,3)}">
+        <input class="num" id="oxMax" placeholder="x max" value="${fmt(outerView.xMax,3)}">
+        <input class="num" id="oyMin" placeholder="y min" value="${fmt(outerView.yMin,4)}">
+        <input class="num" id="oyMax" placeholder="y max" value="${fmt(outerView.yMax,4)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyOuterSpan()">Apply</button></div>
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Selected Segments (Label / Color / Outer Offset / Outer Gain)</div>
+      <div class="seg-list" style="max-height:290px">
+      ${sel.map(({f,s})=>`
+        <div class="seg-item">
+          <div class="seg-text">
+            <div><strong>${f.name.replace(/\.[^.]+$/,'')}</strong> / Step ${s.num}</div>
+            <div class="mini">${s.type}</div>
+            <div class="mini">Legend Label</div>
+            <input class="num" type="text" value="${(s.outerLabel||'').replace(/"/g,'&quot;')}" placeholder="${defaultOuterLabel(f,s)}" onchange="setOuterSegLabel(${f.id},${s.idx},this.value)">
+            <div class="mini" style="margin-top:4px">Line Color</div>
+            <input class="num" type="color" value="${s.outerColor||defaultOuterColor(f,s)}" onchange="setOuterSegColor(${f.id},${s.idx},this.value)">
+            <div class="seg-grid">
+              <input class="num" type="number" step="0.05" value="${s.outerOffset}" onchange="setOuterSegOffset(${f.id},${s.idx},this.value)">
+              <input class="num" type="number" step="0.05" min="0.05" value="${s.outerGain}" onchange="setOuterSegGain(${f.id},${s.idx},this.value)">
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      </div>
+    </div>`;
+}
+function toggleOuterSidebar(){outerSidebarOpen=!outerSidebarOpen;renderOuterChart();}
+function setOuterX(mode){outerXAxis=mode==='time'?'time':'temp';outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
+function setOuterHeight(v){const n=parseInt(v,10);outerHeight=clamp(isNaN(n)?420:n,260,1000);renderOuterChart();}
+function resetOuterView(){outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
+function applyOuterSpan(){
+  const xMin=parseFloat(document.getElementById('oxMin').value),xMax=parseFloat(document.getElementById('oxMax').value),yMin=parseFloat(document.getElementById('oyMin').value),yMax=parseFloat(document.getElementById('oyMax').value);
+  outerView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};
+  renderOuterChart();
+}
+function zoomOuter(axis,factor){
+  if(!outerChart)return;
+  const sx=outerChart.scales.x, sy=outerChart.scales.y;
+  if(axis==='x'){
+    const c=(sx.min+sx.max)/2,curMin=outerView.xMin??sx.min,curMax=outerView.xMax??sx.max,next=zoomRange(curMin,curMax,c,factor,outerBounds.xMin,outerBounds.xMax);
+    outerView.xMin=next[0];outerView.xMax=next[1];
+  }else{
+    const c=(sy.min+sy.max)/2,curMin=outerView.yMin??sy.min,curMax=outerView.yMax??sy.max,next=zoomRange(curMin,curMax,c,factor,outerBounds.yMin,outerBounds.yMax);
+    outerView.yMin=next[0];outerView.yMax=next[1];
+  }
+  renderOuterChart();
+}
+function setOuterSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerOffset=isNaN(n)?0:n;renderOuterChart();}
+function setOuterSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerGain=(isNaN(n)||n<=0)?1:n;renderOuterChart();}
+function setOuterSegLabel(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerLabel=(v||'').trim();renderOuterChart();}
+function setOuterSegColor(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerColor=typeof v==='string'?v:'';renderOuterChart();}
+
+function exportFileChart(fid,which,format){
+  const f=findFile(fid);if(!f)return;
+  const chart=which==='thermal'?f.thermalChart:f.dscChart;
+  const label=which==='thermal'?'thermal':'dsc';
+  exportChartImage(chart,`${f.name.replace(/\.[^.]+$/,'')}_${label}_${getDateStamp()}`,format);
+}
+function exportOuterChart(format){
+  if(!outerChart){alert('Outer chart is not ready');return;}
+  exportChartImage(outerChart,`outer_chart_${getDateStamp()}`,format);
+}
+
+function serializeProject(){
+  return {
+    version:1,
+    savedAt:new Date().toISOString(),
+    nextFid,
+    outer:{outerSidebarOpen,outerXAxis,outerHeight,outerView},
+    files:files.map(f=>({
+      id:f.id,name:f.name,color:f.color,meta:f.meta,data:f.data,
+      chartLayout:f.chartLayout,chartScale:f.chartScale,splitRatio:f.splitRatio,
+      sidebarOpen:f.sidebarOpen,mode:f.mode,dscX:f.dscX,
+      dscView:f.dscView,thermalView:f.thermalView,
+      segments:f.segments.map(s=>({
+        ...s
+      }))
+    }))
+  };
+}
+function serializeDataOnly(){
+  return {
+    version:1,
+    savedAt:new Date().toISOString(),
+    files:files.map(f=>({name:f.name,meta:f.meta,data:f.data}))
+  };
+}
+function hydrateProject(payload,{replace=true,dataOnly=false}={}){
+  if(!payload||!Array.isArray(payload.files)){alert('Invalid JSON format');return;}
+  if(replace){
+    files.forEach(f=>{if(f.dscChart)f.dscChart.destroy();if(f.thermalChart)f.thermalChart.destroy();});
+    files=[];
+  }
+  if(!dataOnly){
+    outerSidebarOpen=payload.outer?.outerSidebarOpen ?? outerSidebarOpen;
+    outerXAxis=payload.outer?.outerXAxis==='time'?'time':'temp';
+    outerHeight=clamp(parseInt(payload.outer?.outerHeight,10)||outerHeight,260,1000);
+    outerView=payload.outer?.outerView||{xMin:null,xMax:null,yMin:null,yMax:null};
+  }
+  payload.files.forEach((src,idx)=>{
+    const id=nextFid++;
+    const rows=Array.isArray(src.data)?src.data:[];
+    if(!rows.length)return;
+    const segSource=Array.isArray(src.segments)&&src.segments.length
+      ?src.segments
+      :assignSegments(rows,[]);
+    const segments=segSource.map((s,i)=>({
+      ...s,
+      idx:i,
+      num:s.num??(i+1),
+      visible:s.visible!==false,
+      selectedOuter:!!s.selectedOuter,
+      dOffset:isFinite(s.dOffset)?s.dOffset:0,
+      yGain:(isFinite(s.yGain)&&s.yGain>0)?s.yGain:1,
+      outerOffset:isFinite(s.outerOffset)?s.outerOffset:0,
+      outerGain:(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1,
+      outerColor:typeof s.outerColor==='string'?s.outerColor:'',
+      outerLabel:typeof s.outerLabel==='string'?s.outerLabel:''
+    }));
+    files.push({
+      id,
+      name:src.name||`loaded_${idx+1}.txt`,
+      color:src.color||FC[(files.length)%FC.length],
+      meta:src.meta||{},
+      data:rows,
+      segments,
+      dscChart:null,thermalChart:null,
+      sidebarOpen:src.sidebarOpen!==false,
+      mode:src.mode==='lock'?'lock':'zoom',
+      dscX:src.dscX==='time'?'time':'temp',
+      dscView:src.dscView||{xMin:null,xMax:null,yMin:null,yMax:null},
+      thermalView:src.thermalView||{xMin:null,xMax:null,yMin:null,yMax:null},
+      dscBounds:{xMin:0,xMax:1,yMin:0,yMax:1},
+      thermalBounds:{xMin:0,xMax:1,yMin:0,yMax:1},
+      chartLayout:src.chartLayout==='row'?'row':'col',
+      chartScale:clamp(parseInt(src.chartScale,10)||100,60,180),
+      splitRatio:clamp(parseInt(src.splitRatio,10)||55,20,80)
+    });
+  });
+  renderAll();
+}
+function saveProjectLocal(){
+  const payload=serializeProject();
+  localStorage.setItem('dsc_analyzer_multiple_project',JSON.stringify(payload));
+  alert('Project saved to local storage.');
+}
+function loadProjectLocal(){
+  const raw=localStorage.getItem('dsc_analyzer_multiple_project');
+  if(!raw){alert('No saved project found in local storage.');return;}
+  try{
+    hydrateProject(JSON.parse(raw),{replace:true,dataOnly:false});
+  }catch(_e){
+    alert('Failed to load saved project.');
+  }
+}
+function exportProjectJson(){
+  const payload=serializeProject();
+  downloadText(`dsc_multiple_project_${getDateStamp()}.json`,JSON.stringify(payload));
+}
+function importProjectJson(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const payload=JSON.parse(e.target.result);
+      hydrateProject(payload,{replace:true,dataOnly:false});
+    }catch(_e){
+      alert('Invalid project JSON file.');
+    }
+  };
+  r.readAsText(file,'UTF-8');
+}
+function exportDataJson(){
+  const payload=serializeDataOnly();
+  localStorage.setItem('dsc_analyzer_multiple_data',JSON.stringify(payload));
+  downloadText(`dsc_multiple_data_${getDateStamp()}.json`,JSON.stringify(payload));
+}
+function loadDataLocal(){
+  const raw=localStorage.getItem('dsc_analyzer_multiple_data');
+  if(!raw){alert('No saved data found in local storage.');return;}
+  try{
+    hydrateProject(JSON.parse(raw),{replace:false,dataOnly:true});
+  }catch(_e){
+    alert('Failed to load local data.');
+  }
+}
+function importDataJson(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const payload=JSON.parse(e.target.result);
+      hydrateProject(payload,{replace:false,dataOnly:true});
+      localStorage.setItem('dsc_analyzer_multiple_data',JSON.stringify(payload));
+    }catch(_e){
+      alert('Invalid data JSON file.');
+    }
+  };
+  r.readAsText(file,'UTF-8');
+}
+
+renderOuterChart();
+</script>
+</body>
+</html>

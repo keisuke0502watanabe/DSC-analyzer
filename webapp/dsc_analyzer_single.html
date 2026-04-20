@@ -1463,6 +1463,15 @@ function zoomRange(min,max,center,factor,boundMin,boundMax){
   return[nMin,nMax];
 }
 
+function getChartPointer(e,ch){
+  if(!ch||!ch.chartArea)return null;
+  const p=Chart.helpers.getRelativePosition(e,ch);
+  if(!p||!isFinite(p.x)||!isFinite(p.y))return null;
+  const area=ch.chartArea;
+  if(p.x<area.left||p.x>area.right||p.y<area.top||p.y>area.bottom)return null;
+  return p;
+}
+
 function bindWheelZoom(canvas,chartRef,view,bounds,modeGetter){
   if(!canvas||canvas.dataset.zoomBound==='1')return;
   canvas.dataset.zoomBound='1';
@@ -1470,17 +1479,19 @@ function bindWheelZoom(canvas,chartRef,view,bounds,modeGetter){
     if(modeGetter()!=='zoom')return;
     const ch=chartRef();
     if(!ch)return;
+    const p=getChartPointer(e,ch);
+    if(!p)return;
     e.preventDefault();
     const zf=e.deltaY<0?0.85:1.18;
     if(e.altKey){
       const sc=ch.scales.y;
-      const c=sc.getValueForPixel(e.offsetY);
+      const c=sc.getValueForPixel(p.y);
       const curMin=view.yMin??sc.min,curMax=view.yMax??sc.max;
       const next=zoomRange(curMin,curMax,c,zf,bounds.yMin,bounds.yMax);
       view.yMin=next[0];view.yMax=next[1];
     }else{
       const sc=ch.scales.x;
-      const c=sc.getValueForPixel(e.offsetX);
+      const c=sc.getValueForPixel(p.x);
       const curMin=view.xMin??sc.min,curMax=view.xMax??sc.max;
       const next=zoomRange(curMin,curMax,c,zf,bounds.xMin,bounds.xMax);
       view.xMin=next[0];view.xMax=next[1];
@@ -1497,9 +1508,13 @@ function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl){
   canvas.addEventListener('mousedown',e=>{
     if(modeGetter()!=='zoom')return;
     if(e.button!==0)return;
+    const ch=chartRef();
+    if(!ch)return;
+    const p=getChartPointer(e,ch);
+    if(!p)return;
     st.active=true;
-    st.sx=e.offsetX;
-    st.sy=e.offsetY;
+    st.sx=p.x;
+    st.sy=p.y;
     if(boxEl){
       boxEl.style.display='block';
       boxEl.style.left=`${st.sx}px`;
@@ -1511,8 +1526,12 @@ function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl){
 
   canvas.addEventListener('mousemove',e=>{
     if(!st.active||!boxEl)return;
-    const x=Math.min(st.sx,e.offsetX),y=Math.min(st.sy,e.offsetY);
-    const w=Math.abs(e.offsetX-st.sx),h=Math.abs(e.offsetY-st.sy);
+    const ch=chartRef();
+    if(!ch)return;
+    const p=Chart.helpers.getRelativePosition(e,ch);
+    if(!p||!isFinite(p.x)||!isFinite(p.y))return;
+    const x=Math.min(st.sx,p.x),y=Math.min(st.sy,p.y);
+    const w=Math.abs(p.x-st.sx),h=Math.abs(p.y-st.sy);
     boxEl.style.left=`${x}px`;
     boxEl.style.top=`${y}px`;
     boxEl.style.width=`${w}px`;
@@ -1522,15 +1541,17 @@ function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl){
   canvas.addEventListener('mouseup',e=>{
     if(!st.active)return;
     st.active=false;
-    const dx=Math.abs(e.offsetX-st.sx);
-    const dy=Math.abs(e.offsetY-st.sy);
-    if(boxEl)boxEl.style.display='none';
-    if(dx<6&&dy<6)return;
     const ch=chartRef();
     if(!ch)return;
+    const p=Chart.helpers.getRelativePosition(e,ch);
+    if(!p||!isFinite(p.x)||!isFinite(p.y))return;
+    const dx=Math.abs(p.x-st.sx);
+    const dy=Math.abs(p.y-st.sy);
+    if(boxEl)boxEl.style.display='none';
+    if(dx<6&&dy<6)return;
     const sx=ch.scales.x, sy=ch.scales.y;
-    const x1=sx.getValueForPixel(st.sx), x2=sx.getValueForPixel(e.offsetX);
-    const y1=sy.getValueForPixel(st.sy), y2=sy.getValueForPixel(e.offsetY);
+    const x1=sx.getValueForPixel(st.sx), x2=sx.getValueForPixel(p.x);
+    const y1=sy.getValueForPixel(st.sy), y2=sy.getValueForPixel(p.y);
     if(!isFinite(x1)||!isFinite(x2)||!isFinite(y1)||!isFinite(y2))return;
     const nxMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);
     const nxMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);
