@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DSC Analyzer DB</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;
+  --bg2:#161616;
+  --bg3:#1e1e1e;
+  --bg4:#252525;
+  --border:#2a2a2a;
+  --border2:#333;
+  --text:#e8e8e8;
+  --text2:#999;
+  --text3:#666;
+  --accent:#4a9eff;
+  --accent2:#2d7dd2;
+  --heat:#e8644a;
+  --cool:#4a9eff;
+  --iso:#888;
+  --green:#3dba7e;
+  --warn:#e85a4a;
+  --panel-w:260px;
+  --chart-grid:#222;
+  --chart-tick:#666;
+}
+:root.light{
+  --bg:#f5f5f2;
+  --bg2:#ffffff;
+  --bg3:#f0f0ec;
+  --bg4:#e4e4e0;
+  --border:#e0e0da;
+  --border2:#ccc;
+  --text:#1a1a1a;
+  --text2:#555;
+  --text3:#888;
+  --accent:#1a6fd4;
+  --accent2:#1457a8;
+  --heat:#c0392b;
+  --cool:#1a6fd4;
+  --iso:#888;
+  --green:#1e8c5a;
+  --warn:#c0392b;
+  --chart-grid:#e8e8e4;
+  --chart-tick:#aaa;
+}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);font-size:13px;min-height:100vh;display:flex;flex-direction:column}
+code,input[type=number],input[type=text],.mono{font-family:'IBM Plex Mono',monospace}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex:1;height:100vh;overflow:hidden}
+.sidebar{width:var(--panel-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .2s}
+.sidebar.collapsed{width:0;border-right:none}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── TOPBAR ── */
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem;height:44px;display:flex;align-items:center;gap:8px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.topbar::-webkit-scrollbar{display:none}
+.topbar-brand{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;color:var(--text);letter-spacing:.02em;margin-right:8px}
+.topbar-brand span{color:var(--accent);font-size:11px}
+.topbar-sep{width:1px;height:18px;background:var(--border2);margin:0 4px}
+
+/* ── BUTTONS ── */
+.btn{font-family:'IBM Plex Sans',sans-serif;font-size:11px;padding:3px 9px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .13s;white-space:nowrap}
+.btn:hover{background:var(--bg4);color:var(--text);border-color:var(--border2)}
+.btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn.warn{border-color:var(--warn);color:var(--warn)}
+.btn.warn:hover{background:var(--warn);color:#fff}
+.btn-row{display:flex;gap:4px;flex-wrap:wrap}
+
+/* ── SIDEBAR PANEL ── */
+.sb-inner{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.sb-section{border-bottom:1px solid var(--border);padding:.6rem .75rem}
+.sb-title{font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem}
+.sb-scroll{overflow-y:auto;flex:1}
+
+/* ── DB FILE LIST ── */
+.db-file{padding:.45rem .75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;cursor:pointer;transition:background .12s}
+.db-file:hover{background:var(--bg3)}
+.db-file.active{background:var(--bg4);border-left:2px solid var(--accent)}
+.db-file-name{flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-file-meta{font-size:10px;color:var(--text3);font-family:'IBM Plex Mono',monospace}
+.db-file-tag{display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg4);color:var(--text3);border:1px solid var(--border2);margin-top:2px}
+.db-file-tag.heat{border-color:#5a3030;color:#e86060}
+.db-file-tag.cool{border-color:#2a3a5a;color:#60a0e8}
+.db-file-actions{display:flex;gap:3px;opacity:0;transition:opacity .12s}
+.db-file:hover .db-file-actions{opacity:1}
+
+.db-project{padding:.4rem .75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;cursor:pointer;transition:background .12s}
+.db-project:hover{background:var(--bg3)}
+.db-project-name{flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-project-meta{font-size:10px;color:var(--text3);font-family:'IBM Plex Mono',monospace}
+.db-project-actions{display:flex;gap:3px;opacity:0;transition:opacity .12s}
+.db-project:hover .db-project-actions{opacity:1}
+
+.db-empty{padding:.75rem;font-size:11px;color:var(--text3);text-align:center;font-style:italic}
+
+/* ── SEARCH ── */
+.db-search{display:flex;gap:4px;margin-bottom:.5rem}
+.db-search input{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:3px 7px;border-radius:4px;font-size:11px;font-family:'IBM Plex Mono',monospace;outline:none}
+.db-search input:focus{border-color:var(--accent)}
+
+/* ── MAIN CONTENT ── */
+.content{flex:1;overflow-y:auto;padding:1rem}
+
+/* ── DROP ZONE ── */
+.dz{border:1.5px dashed var(--border2);border-radius:8px;padding:1rem;text-align:center;background:var(--bg2);transition:all .18s;cursor:pointer}
+.dz:hover,.dz.drag{border-color:var(--accent);background:#0d1a2a}
+.dz p{font-size:12px;color:var(--text2);margin-bottom:.6rem}
+input[type=file]{display:none}
+
+/* ── PANELS ── */
+.panel{background:var(--bg2);border-radius:8px;padding:.75rem 1rem;border:1px solid var(--border);margin-bottom:.75rem}
+.ptitle{font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)}
+
+/* ── CHARTS ── */
+.charts-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.chart-outer{background:var(--bg2);border-radius:8px;border:1px solid var(--border);overflow:hidden}
+.chart-head{padding:.5rem .75rem;border-bottom:1px solid var(--border);background:var(--bg3);display:flex;align-items:center;gap:6px}
+.chart-title{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-family:'IBM Plex Mono',monospace}
+.chart-body{display:grid;grid-template-columns:280px 1fr;gap:10px;padding:.75rem}
+.chart-body.sidebar-hidden{grid-template-columns:1fr}
+.chart-body.sidebar-hidden .sidebar-wrap{display:none}
+.sidebar-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sidebar-card{border:1px solid var(--border);border-radius:6px;padding:7px;background:var(--bg3)}
+.seg-list{max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg2)}
+.seg-item{padding:5px 7px;border-bottom:1px solid var(--border);display:flex;gap:5px;align-items:flex-start;font-size:11px}
+.seg-item:last-child{border-bottom:none}
+.seg-text{flex:1;line-height:1.3}
+.seg-ctl{display:flex;gap:5px;align-items:center}
+.seg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:3px}
+.chart-stack{display:grid;gap:10px}
+.chart-stack.col{grid-template-rows:var(--dsc-ratio,55%) var(--th-ratio,45%);grid-template-columns:1fr}
+.chart-stack.row{grid-template-columns:var(--dsc-ratio,55%) var(--th-ratio,45%);grid-template-rows:1fr}
+.chart-pane{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.4rem}
+.pane-title{font-size:10px;color:var(--text3);margin-bottom:4px;font-family:'IBM Plex Mono',monospace}
+.canvas-wrap{position:relative;height:100%}
+.zoom-box{position:absolute;border:1.5px dashed var(--accent);background:rgba(74,158,255,.1);display:none;pointer-events:none;z-index:2}
+canvas{width:100%;height:100%}
+.outer-wrap{margin-top:.75rem}
+.outer-placeholder{font-size:12px;color:var(--text3);padding:.75rem;border:1px dashed var(--border2);border-radius:6px;background:var(--bg3)}
+
+/* ── FORM INPUTS ── */
+.num{width:100%;font-size:11px;padding:2px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;outline:none}
+.num:focus{border-color:var(--accent)}
+.lbl{font-size:10px;color:var(--text3);margin-top:7px;margin-bottom:3px}
+.mini{font-size:10px;color:var(--text3)}
+
+/* ── STATUS / TOAST ── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:.5rem .9rem;font-size:11px;color:var(--text);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:999;font-family:'IBM Plex Mono',monospace}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{border-color:var(--green);color:var(--green)}
+.toast.err{border-color:var(--warn);color:var(--warn)}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-bg.show{opacity:1;pointer-events:all}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:1.2rem;min-width:320px;max-width:480px}
+.modal h3{font-size:13px;font-weight:500;margin-bottom:.75rem;font-family:'IBM Plex Mono',monospace;color:var(--accent)}
+.modal input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:5px 8px;border-radius:4px;font-size:12px;font-family:'IBM Plex Mono',monospace;outline:none;margin-bottom:.6rem}
+.modal input:focus{border-color:var(--accent)}
+.modal .btn-row{justify-content:flex-end;margin-top:.5rem}
+
+/* ── CHIP TAG ── */
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 6px;border-radius:12px;border:1px solid var(--border2);color:var(--text3);cursor:pointer}
+.chip.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chip-wrap{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+
+/* ── ADAPTER STATUS ── */
+.adapter-badge{font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--border2);color:var(--text3);font-family:'IBM Plex Mono',monospace}
+.adapter-badge.idb{border-color:#3a4a2a;color:#7db85a}
+.adapter-badge.supa{border-color:#2a3a5a;color:#5a9ae8}
+
+@media (max-width:980px){.chart-body{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ═══ LEFT SIDEBAR (DB Panel) ═══ -->
+<div class="sidebar" id="dbSidebar">
+  <div class="sb-inner">
+    <!-- File DB -->
+    <div class="sb-section">
+      <div class="sb-title">File Cache</div>
+      <div class="db-search">
+        <input type="text" id="fileSearch" placeholder="search…" oninput="filterDbFiles()">
+      </div>
+      <div class="btn-row">
+        <button class="btn green" onclick="document.getElementById('fileIn').click()">+ Load Files</button>
+        <button class="btn" onclick="clearDbFiles()" title="Clear all cached files">Clear</button>
+      </div>
+      <div class="btn-row" style="margin-top:4px">
+        <button class="btn" onclick="exportFullDb()">DB Export</button>
+        <button class="btn" onclick="document.getElementById('dbImportIn').click()">DB Import</button>
+      </div>
+    </div>
+    <div id="dbFileList" style="max-height:240px;overflow-y:auto;border-bottom:1px solid var(--border)">
+      <div class="db-empty">No files in cache</div>
+    </div>
+
+    <!-- Project DB -->
+    <div class="sb-section" style="margin-top:0">
+      <div class="sb-title">Projects</div>
+      <div class="btn-row">
+        <button class="btn green" onclick="openSaveProjectModal()">+ Save Project</button>
+        <button class="btn" onclick="clearDbProjects()" title="Clear all saved projects">Clear</button>
+      </div>
+    </div>
+    <div id="dbProjectList" class="sb-scroll">
+      <div class="db-empty">No saved projects</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main">
+  <!-- Topbar -->
+  <div class="topbar">
+    <button class="btn" onclick="toggleSidebar()" title="Toggle DB panel">☰</button>
+    <span class="topbar-brand">DSC Analyzer <span>DB</span></span>
+    <div class="topbar-sep"></div>
+    <button class="btn" onclick="document.getElementById('fileIn').click()">Load Files</button>
+    <button class="btn" onclick="openSaveProjectModal()">Save Project</button>
+    <button class="btn" onclick="exportProjectJson()">Export JSON</button>
+    <button class="btn" onclick="document.getElementById('projectIn').click()">Import JSON</button>
+    <button class="btn" onclick="exportDataJson()">Export Data</button>
+    <div class="topbar-sep"></div>
+    <button class="btn" onclick="exportFullDb()">DB Export</button>
+    <button class="btn" onclick="document.getElementById('dbImportIn').click()">DB Import</button>
+    <div style="flex:1"></div>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()" title="ライト/ダーク切替" style="font-size:14px;padding:2px 7px">🌙</button>
+    <div class="adapter-badge" id="adapterBadge">IndexedDB</div>
+    <input type="file" id="fileIn" accept=".txt,.csv" multiple>
+    <input type="file" id="projectIn" accept=".json">
+    <input type="file" id="dataIn" accept=".json">
+    <input type="file" id="dbImportIn" accept=".json">
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="mainContent">
+    <div class="panel">
+      <div class="ptitle">Input</div>
+      <div class="dz" id="dz">
+        <p>Drop DSC files here, or select from sidebar cache</p>
+        <button class="btn" onclick="event.stopPropagation();document.getElementById('fileIn').click()">Select Files</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Outer Chart (Combined)</div>
+      <div class="outer-wrap" id="outerWrap"></div>
+    </div>
+    <div class="charts-grid" id="chartsGrid"></div>
+  </div>
+</div>
+</div>
+
+<!-- Save Project Modal -->
+<div class="modal-bg" id="saveModal">
+  <div class="modal">
+    <h3>Save Project</h3>
+    <input type="text" id="projectNameInput" placeholder="Project name…" onkeydown="if(event.key==='Enter')confirmSaveProject()">
+    <input type="text" id="projectTagInput" placeholder="Tags (comma separated, optional)">
+    <div class="btn-row">
+      <button class="btn" onclick="closeSaveModal()">Cancel</button>
+      <button class="btn green" onclick="confirmSaveProject()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duplicate File Warning Modal -->
+<div class="modal-bg" id="dupModal">
+  <div class="modal">
+    <h3>⚠ 同名ファイルが存在します</h3>
+    <div id="dupModalBody" style="font-size:12px;color:var(--text2);margin-bottom:.8rem;line-height:1.6"></div>
+    <div style="margin-bottom:.6rem">
+      <div class="mini" style="margin-bottom:4px">別名で保存する場合:</div>
+      <input type="text" id="dupRenameInput" placeholder="新しいファイル名…" onkeydown="if(event.key==='Enter')dupChoice('rename')">
+    </div>
+    <div class="btn-row">
+      <button class="btn warn" onclick="dupChoice('skip')">スキップ</button>
+      <button class="btn" onclick="dupChoice('overwrite')">上書き</button>
+      <button class="btn green" onclick="dupChoice('rename')">別名で保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════
+//  STORAGE ADAPTER INTERFACE
+//  Swap out IndexedDBAdapter for SupabaseAdapter
+//  without changing any UI code.
+// ════════════════════════════════════════════════
+class StorageAdapter {
+  async saveFile(fileObj)    { throw new Error('Not implemented'); }
+  async listFiles()          { throw new Error('Not implemented'); }
+  async getFile(id)          { throw new Error('Not implemented'); }
+  async deleteFile(id)       { throw new Error('Not implemented'); }
+  async clearFiles()         { throw new Error('Not implemented'); }
+  async saveProject(projObj) { throw new Error('Not implemented'); }
+  async listProjects()       { throw new Error('Not implemented'); }
+  async getProject(id)       { throw new Error('Not implemented'); }
+  async deleteProject(id)    { throw new Error('Not implemented'); }
+  async clearProjects()      { throw new Error('Not implemented'); }
+  get name()                 { return 'base'; }
+}
+
+// ────────────────────────────────────────────────
+//  IndexedDB Adapter  (current default)
+// ────────────────────────────────────────────────
+class IndexedDBAdapter extends StorageAdapter {
+  constructor(){ super(); this._db=null; }
+  get name(){ return 'IndexedDB'; }
+
+  async _open(){
+    if(this._db) return this._db;
+    return new Promise((res,rej)=>{
+      const req=indexedDB.open('dsc_analyzer_db',2);
+      req.onupgradeneeded=e=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains('files')){
+          const fs=db.createObjectStore('files',{keyPath:'id',autoIncrement:true});
+          fs.createIndex('name','name',{unique:false});
+          fs.createIndex('savedAt','savedAt',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('projects')){
+          const ps=db.createObjectStore('projects',{keyPath:'id',autoIncrement:true});
+          ps.createIndex('name','name',{unique:false});
+          ps.createIndex('savedAt','savedAt',{unique:false});
+        }
+      };
+      req.onsuccess=e=>{this._db=e.target.result;res(this._db);};
+      req.onerror=e=>rej(e.target.error);
+    });
+  }
+  async _tx(store,mode,fn){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(store,mode);
+      const st=tx.objectStore(store);
+      const req=fn(st);
+      req.onsuccess=()=>res(req.result);
+      req.onerror=()=>rej(req.error);
+    });
+  }
+  async _txAll(store,fn){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(store,'readonly');
+      const st=tx.objectStore(store);
+      const req=st.getAll();
+      req.onsuccess=()=>res(fn?fn(req.result):req.result);
+      req.onerror=()=>rej(req.error);
+    });
+  }
+
+  async saveFile(fileObj){
+    return this._tx('files','readwrite',st=>st.put({...fileObj,savedAt:new Date().toISOString()}));
+  }
+  async listFiles(){ return this._txAll('files'); }
+  async getFile(id){ return this._tx('files','readonly',st=>st.get(id)); }
+  async deleteFile(id){ return this._tx('files','readwrite',st=>st.delete(id)); }
+  async clearFiles(){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const req=db.transaction('files','readwrite').objectStore('files').clear();
+      req.onsuccess=()=>res();req.onerror=()=>rej(req.error);
+    });
+  }
+
+  async saveProject(projObj){
+    return this._tx('projects','readwrite',st=>st.put({...projObj,savedAt:new Date().toISOString()}));
+  }
+  async listProjects(){ return this._txAll('projects'); }
+  async getProject(id){ return this._tx('projects','readonly',st=>st.get(id)); }
+  async deleteProject(id){ return this._tx('projects','readwrite',st=>st.delete(id)); }
+  async clearProjects(){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const req=db.transaction('projects','readwrite').objectStore('projects').clear();
+      req.onsuccess=()=>res();req.onerror=()=>rej(req.error);
+    });
+  }
+}
+
+// ────────────────────────────────────────────────
+//  Supabase Adapter STUB
+//  To activate: implement methods below and call
+//    setAdapter(new SupabaseAdapter(SUPABASE_URL, SUPABASE_ANON_KEY))
+//  Table schema (SQL):
+//    create table dsc_files (
+//      id uuid primary key default gen_random_uuid(),
+//      name text, meta jsonb, rawText text,
+//      savedAt timestamptz default now()
+//    );
+//    create table dsc_projects (
+//      id uuid primary key default gen_random_uuid(),
+//      name text, tags text[], payload jsonb,
+//      savedAt timestamptz default now()
+//    );
+// ────────────────────────────────────────────────
+class SupabaseAdapter extends StorageAdapter {
+  constructor(url, anonKey){
+    super();
+    this._url=url; this._key=anonKey;
+  }
+  get name(){ return 'Supabase'; }
+  async _req(path,opts={}){
+    const r=await fetch(`${this._url}/rest/v1/${path}`,{
+      headers:{'apikey':this._key,'Authorization':`Bearer ${this._key}`,'Content-Type':'application/json','Prefer':'return=representation',...(opts.headers||{})},
+      ...opts
+    });
+    if(!r.ok) throw new Error(`Supabase error: ${r.status}`);
+    return r.json();
+  }
+  async saveFile(fileObj){
+    if(fileObj.id) return (await this._req(`dsc_files?id=eq.${fileObj.id}`,{method:'PATCH',body:JSON.stringify(fileObj)}))[0];
+    return (await this._req('dsc_files',{method:'POST',body:JSON.stringify(fileObj)}))[0];
+  }
+  async listFiles(){ return this._req('dsc_files?order=savedAt.desc'); }
+  async getFile(id){ return (await this._req(`dsc_files?id=eq.${id}`))[0]; }
+  async deleteFile(id){ return this._req(`dsc_files?id=eq.${id}`,{method:'DELETE'}); }
+  async clearFiles(){ return this._req('dsc_files',{method:'DELETE',headers:{'Prefer':'return=minimal'}}); }
+  async saveProject(projObj){
+    if(projObj.id) return (await this._req(`dsc_projects?id=eq.${projObj.id}`,{method:'PATCH',body:JSON.stringify(projObj)}))[0];
+    return (await this._req('dsc_projects',{method:'POST',body:JSON.stringify(projObj)}))[0];
+  }
+  async listProjects(){ return this._req('dsc_projects?order=savedAt.desc'); }
+  async getProject(id){ return (await this._req(`dsc_projects?id=eq.${id}`))[0]; }
+  async deleteProject(id){ return this._req(`dsc_projects?id=eq.${id}`,{method:'DELETE'}); }
+  async clearProjects(){ return this._req('dsc_projects',{method:'DELETE',headers:{'Prefer':'return=minimal'}}); }
+}
+
+// ────────────────────────────────────────────────
+//  Active adapter — swap here to change backend
+// ────────────────────────────────────────────────
+let adapter = new IndexedDBAdapter();
+
+function setAdapter(newAdapter){
+  adapter=newAdapter;
+  document.getElementById('adapterBadge').textContent=newAdapter.name;
+  document.getElementById('adapterBadge').className='adapter-badge '+(newAdapter instanceof SupabaseAdapter?'supa':'idb');
+  refreshDbPanels();
+}
+
+// ════════════════════════════════════════════════
+//  CHART COLORS / CONSTANTS
+// ════════════════════════════════════════════════
+const FC=['#4a9eff','#e8644a','#9d88e8','#3dba7e','#e8a040','#e85a8a','#888','#90b840'];
+const STYPE_COLOR={heating:'#e8644a',cooling:'#4a9eff',isothermal:'#888'};
+
+let files=[]; let nextFid=1;
+let outerChart=null; let outerSidebarOpen=true;
+let outerXAxis='temp'; let outerHeight=400;
+let outerView={xMin:null,xMax:null,yMin:null,yMax:null};
+let outerBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let sidebarOpen=true;
+
+// ════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════
+let toastTimer=null;
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className=`toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
+}
+function toggleSidebar(){
+  sidebarOpen=!sidebarOpen;
+  document.getElementById('dbSidebar').classList.toggle('collapsed',!sidebarOpen);
+}
+function openSaveProjectModal(){
+  document.getElementById('projectNameInput').value=`Project ${getDateStamp()}`;
+  document.getElementById('projectTagInput').value='';
+  document.getElementById('saveModal').classList.add('show');
+  setTimeout(()=>document.getElementById('projectNameInput').select(),80);
+}
+function closeSaveModal(){ document.getElementById('saveModal').classList.remove('show'); }
+document.getElementById('saveModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeSaveModal();});
+
+// ════════════════════════════════════════════════
+//  DB PANEL RENDERING
+// ════════════════════════════════════════════════
+let dbFileCache=[];
+let dbProjectCache=[];
+let fileSearchQuery='';
+
+async function refreshDbPanels(){
+  try{
+    dbFileCache=await adapter.listFiles();
+    dbProjectCache=await adapter.listProjects();
+    renderDbFileList();
+    renderDbProjectList();
+  }catch(e){ toast('DB read error: '+e.message,'err'); }
+}
+
+function filterDbFiles(){ fileSearchQuery=document.getElementById('fileSearch').value.toLowerCase(); renderDbFileList(); }
+
+function renderDbFileList(){
+  const el=document.getElementById('dbFileList');
+  const list=dbFileCache.filter(f=>!fileSearchQuery||f.name.toLowerCase().includes(fileSearchQuery));
+  if(!list.length){ el.innerHTML='<div class="db-empty">No cached files</div>'; return; }
+  el.innerHTML=list.map(f=>{
+    const d=new Date(f.savedAt);
+    const ds=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const rows=f.rowCount||0;
+    return `<div class="db-file" onclick="loadFileFromDb(${f.id||JSON.stringify(f.id)})">
+      <div style="flex:1;min-width:0">
+        <div class="db-file-name" title="${esc(f.name)}">${esc(f.name)}</div>
+        <div class="db-file-meta">${ds} · ${rows} pts</div>
+      </div>
+      <div class="db-file-actions">
+        <button class="btn warn" onclick="event.stopPropagation();deleteDbFile(${f.id||JSON.stringify(f.id)})" title="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDbProjectList(){
+  const el=document.getElementById('dbProjectList');
+  if(!dbProjectCache.length){ el.innerHTML='<div class="db-empty">No saved projects</div>'; return; }
+  el.innerHTML=dbProjectCache.map(p=>{
+    const d=new Date(p.savedAt);
+    const ds=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const tags=(p.tags||[]).map(t=>`<span class="db-file-tag">${esc(t)}</span>`).join(' ');
+    const fc=(p.payload?.files||[]).length;
+    return `<div class="db-project" onclick="loadProjectFromDb(${p.id||JSON.stringify(p.id)})">
+      <div style="flex:1;min-width:0">
+        <div class="db-project-name" title="${esc(p.name)}">${esc(p.name)}</div>
+        <div class="db-project-meta">${ds} · ${fc} file(s)</div>
+        ${tags?`<div style="margin-top:3px">${tags}</div>`:''}
+      </div>
+      <div class="db-project-actions">
+        <button class="btn warn" onclick="event.stopPropagation();deleteDbProject(${p.id||JSON.stringify(p.id)})" title="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ════════════════════════════════════════════════
+//  DB OPERATIONS
+// ════════════════════════════════════════════════
+async function loadFileFromDb(id){
+  try{
+    const rec=await adapter.getFile(id);
+    if(!rec){toast('File not found','err');return;}
+    parse(rec.rawText, rec.name);
+    toast(`Loaded: ${rec.name}`);
+  }catch(e){ toast('Load error: '+e.message,'err'); }
+}
+
+async function deleteDbFile(id){
+  if(!confirm('Delete this cached file?')) return;
+  try{ await adapter.deleteFile(id); toast('File deleted'); await refreshDbPanels(); }
+  catch(e){ toast('Delete error: '+e.message,'err'); }
+}
+
+async function clearDbFiles(){
+  if(!confirm('Clear all cached files from DB?')) return;
+  try{ await adapter.clearFiles(); toast('File cache cleared'); await refreshDbPanels(); }
+  catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+async function loadProjectFromDb(id){
+  try{
+    const rec=await adapter.getProject(id);
+    if(!rec){toast('Project not found','err');return;}
+    hydrateProject(rec.payload,{replace:true,dataOnly:false});
+    toast(`Loaded project: ${rec.name}`);
+  }catch(e){ toast('Load error: '+e.message,'err'); }
+}
+
+async function deleteDbProject(id){
+  if(!confirm('Delete this project?')) return;
+  try{ await adapter.deleteProject(id); toast('Project deleted'); await refreshDbPanels(); }
+  catch(e){ toast('Delete error: '+e.message,'err'); }
+}
+
+async function clearDbProjects(){
+  if(!confirm('Clear all saved projects?')) return;
+  try{ await adapter.clearProjects(); toast('Projects cleared'); await refreshDbPanels(); }
+  catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+async function confirmSaveProject(){
+  const name=document.getElementById('projectNameInput').value.trim()||`Project ${getDateStamp()}`;
+  const tags=document.getElementById('projectTagInput').value.split(',').map(t=>t.trim()).filter(Boolean);
+  closeSaveModal();
+  try{
+    const payload=serializeProject();
+    await adapter.saveProject({name,tags,payload});
+    toast(`Saved: ${name}`);
+    await refreshDbPanels();
+  }catch(e){ toast('Save error: '+e.message,'err'); }
+}
+
+// ════════════════════════════════════════════════
+//  FILE INPUT / DROP
+// ════════════════════════════════════════════════
+const dz=document.getElementById('dz');
+dz.addEventListener('click',()=>document.getElementById('fileIn').click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');[...e.dataTransfer.files].forEach(loadFile);});
+document.getElementById('fileIn').addEventListener('change',e=>{[...e.target.files].forEach(loadFile);e.target.value='';});
+document.getElementById('projectIn').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importProjectJson(file);e.target.value='';});
+document.getElementById('dataIn').addEventListener('change',e=>{const file=e.target.files?.[0];if(file)importDataJson(file);e.target.value='';});
+
+// ════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════
+function downloadText(filename,text){
+  const blob=new Blob([text],{type:'application/json;charset=utf-8'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+}
+function getDateStamp(){
+  const d=new Date(),pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function chartToPngDataUrl(chart){if(!chart)return null;chart.resize();return chart.toBase64Image('image/png',1);}
+function exportChartImage(chart,filenameBase,format='png'){
+  const dataUrl=chartToPngDataUrl(chart);if(!dataUrl){alert('Chart not ready');return;}
+  if(format==='png'){const a=document.createElement('a');a.href=dataUrl;a.download=`${filenameBase}.png`;a.click();return;}
+  const jsPdfObj=window.jspdf?.jsPDF;if(!jsPdfObj){alert('PDF library not available');return;}
+  const img=new Image();
+  img.onload=()=>{
+    const pdf=new jsPdfObj({orientation:img.width>img.height?'landscape':'portrait',unit:'pt',format:'a4'});
+    const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+    const scale=Math.min((pw-40)/img.width,(ph-40)/img.height);
+    const w=img.width*scale,h=img.height*scale,x=(pw-w)/2,y=(ph-h)/2;
+    pdf.addImage(dataUrl,'PNG',x,y,w,h);pdf.save(`${filenameBase}.pdf`);
+  };img.src=dataUrl;
+}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function zoomRange(min,max,center,factor,bMin,bMax){
+  if(!isFinite(min)||!isFinite(max)||max<=min)return[min,max];
+  const c=clamp(center,min,max),span=(max-min)*factor;
+  let nMin=c-(c-min)*factor,nMax=nMin+span;
+  if(isFinite(bMin)&&nMin<bMin){nMax+=bMin-nMin;nMin=bMin;}
+  if(isFinite(bMax)&&nMax>bMax){nMin-=nMax-bMax;nMax=bMax;}
+  if(nMax<=nMin)return[min,max];
+  return[nMin,nMax];
+}
+function getChartPointer(e,ch){
+  if(!ch||!ch.chartArea)return null;
+  const p=Chart.helpers.getRelativePosition(e,ch);
+  if(!p||!isFinite(p.x)||!isFinite(p.y))return null;
+  const a=ch.chartArea;
+  if(p.x<a.left||p.x>a.right||p.y<a.top||p.y>a.bottom)return null;
+  return p;
+}
+function bindWheelZoom(canvas,chartRef,view,bounds,modeGetter,onChange){
+  if(!canvas||canvas.dataset.zoomBound==='1')return;canvas.dataset.zoomBound='1';
+  canvas.addEventListener('wheel',e=>{
+    if(modeGetter()!=='zoom')return;const ch=chartRef();if(!ch)return;
+    const p=getChartPointer(e,ch);if(!p)return;e.preventDefault();
+    const zf=e.deltaY<0?0.85:1.18;
+    if(e.altKey){const sc=ch.scales.y;const c=sc.getValueForPixel(p.y);const curMin=view.yMin??sc.min,curMax=view.yMax??sc.max;const next=zoomRange(curMin,curMax,c,zf,bounds.yMin,bounds.yMax);view.yMin=next[0];view.yMax=next[1];}
+    else{const sc=ch.scales.x;const c=sc.getValueForPixel(p.x);const curMin=view.xMin??sc.min,curMax=view.xMax??sc.max;const next=zoomRange(curMin,curMax,c,zf,bounds.xMin,bounds.xMax);view.xMin=next[0];view.xMax=next[1];}
+    onChange();
+  },{passive:false});
+}
+function bindDragZoom(canvas,chartRef,view,bounds,modeGetter,boxEl,onChange){
+  if(!canvas||canvas.dataset.dragZoomBound==='1')return;canvas.dataset.dragZoomBound='1';
+  const st={active:false,sx:0,sy:0};
+  canvas.addEventListener('mousedown',e=>{if(modeGetter()!=='zoom'||e.button!==0)return;const ch=chartRef();if(!ch)return;const p=getChartPointer(e,ch);if(!p)return;st.active=true;st.sx=p.x;st.sy=p.y;if(boxEl){boxEl.style.display='block';boxEl.style.left=`${st.sx}px`;boxEl.style.top=`${st.sy}px`;boxEl.style.width='0px';boxEl.style.height='0px';}});
+  canvas.addEventListener('mousemove',e=>{if(!st.active||!boxEl)return;const ch=chartRef();if(!ch)return;const p=Chart.helpers.getRelativePosition(e,ch);if(!p)return;const x=Math.min(st.sx,p.x),y=Math.min(st.sy,p.y),w=Math.abs(p.x-st.sx),h=Math.abs(p.y-st.sy);boxEl.style.left=`${x}px`;boxEl.style.top=`${y}px`;boxEl.style.width=`${w}px`;boxEl.style.height=`${h}px`;});
+  canvas.addEventListener('mouseup',e=>{if(!st.active)return;st.active=false;if(boxEl)boxEl.style.display='none';const ch=chartRef();if(!ch)return;const p=Chart.helpers.getRelativePosition(e,ch);if(!p)return;if(Math.abs(p.x-st.sx)<6||Math.abs(p.y-st.sy)<6)return;const sx=ch.scales.x,sy=ch.scales.y;const x1=sx.getValueForPixel(st.sx),x2=sx.getValueForPixel(p.x);const y1=sy.getValueForPixel(st.sy),y2=sy.getValueForPixel(p.y);view.xMin=clamp(Math.min(x1,x2),bounds.xMin,bounds.xMax);view.xMax=clamp(Math.max(x1,x2),bounds.xMin,bounds.xMax);view.yMin=clamp(Math.min(y1,y2),bounds.yMin,bounds.yMax);view.yMax=clamp(Math.max(y1,y2),bounds.yMin,bounds.yMax);onChange();});
+  canvas.addEventListener('mouseleave',()=>{st.active=false;if(boxEl)boxEl.style.display='none';});
+}
+
+// ════════════════════════════════════════════════
+//  FILE PARSING  (same logic as original)
+// ════════════════════════════════════════════════
+
+// Duplicate resolution modal state
+let _dupResolve = null;
+function dupChoice(action){
+  document.getElementById('dupModal').classList.remove('show');
+  if(_dupResolve){
+    const rename = document.getElementById('dupRenameInput').value.trim();
+    _dupResolve({action, rename: rename || null});
+    _dupResolve = null;
+  }
+}
+function showDupModal(existing, rawText){
+  const d = new Date(existing.savedAt);
+  const ds = d.toLocaleString();
+  document.getElementById('dupModalBody').innerHTML =
+    `<strong>${esc(existing.name)}</strong><br>` +
+    `既存: ${ds} · ${existing.rowCount||0} pts<br>` +
+    `新規: ${countDataRows(rawText)} pts`;
+  // pre-fill rename with timestamped name
+  const base = existing.name.replace(/(\.[^.]+)$/, '');
+  const ext  = existing.name.match(/(\.[^.]+)$/)?.[1] || '';
+  document.getElementById('dupRenameInput').value = `${base}_${getDateStamp()}${ext}`;
+  document.getElementById('dupModal').classList.add('show');
+  return new Promise(res => { _dupResolve = res; });
+}
+
+function loadFile(file){
+  const r=new FileReader();
+  r.onload=async e=>{
+    const rawText=e.target.result;
+    // Check for duplicate in DB cache
+    const existing = dbFileCache.find(f => f.name === file.name);
+    let saveName = file.name;
+    let saveId   = null;
+
+    if(existing){
+      const {action, rename} = await showDupModal(existing, rawText);
+      if(action === 'skip'){
+        // load into chart but don't touch DB
+        parse(rawText, file.name);
+        toast(`スキップ: DBは更新しませんでした`);
+        return;
+      } else if(action === 'overwrite'){
+        saveId   = existing.id;
+        saveName = existing.name;
+      } else if(action === 'rename'){
+        saveName = rename || `${file.name}_${getDateStamp()}`;
+        saveId   = null; // new record
+      }
+    }
+
+    parse(rawText, saveName);
+
+    // Cache to DB
+    try{
+      const rowCount = countDataRows(rawText);
+      const rec = {name: saveName, rawText, rowCount};
+      if(saveId) rec.id = saveId;
+      await adapter.saveFile(rec);
+      toast(saveId ? `上書き: ${saveName}` : `キャッシュ: ${saveName}`);
+      await refreshDbPanels();
+    }catch(err){ toast('DB cache error: '+err.message,'err'); }
+  };
+  r.readAsText(file,'UTF-8');
+}
+function countDataRows(txt){
+  const lines=txt.split('\n');let start=-1;
+  for(let i=0;i<lines.length;i++){if(/^\s*Time\s+Unsubtracted/i.test(lines[i])){start=i+2;break;}}
+  if(start<0)return 0;
+  let count=0;
+  for(let i=start;i<lines.length;i++){const c=lines[i].trim().split(/\t/);if(c.length>=5&&!c.slice(0,5).some(v=>isNaN(parseFloat(v))))count++;}
+  return count;
+}
+function parse(txt,fname){
+  const lines=txt.split('\n');const meta={};const methodSteps=[];let dataStart=-1;
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/^\s*Time\s+Unsubtracted/i.test(l)){dataStart=i+2;break;}
+    const kv=l.split('\t');if(kv.length>=2){const k=kv[0].trim().replace(/:$/,'');const v=kv.slice(1).join('\t').trim();if(k&&v)meta[k]=v;}
+    const scanMatch=l.match(/^(\d+)\)\s*(Cool|Heat)\s+from\s+([-\d.]+).C\s+to\s+([-\d.]+).C\s+at\s+([\d.]+).C\/min/i);
+    if(scanMatch)methodSteps.push({num:+scanMatch[1],type:scanMatch[2].toLowerCase()==='heat'?'heating':'cooling',fromT:+scanMatch[3],toT:+scanMatch[4],rate:+scanMatch[5],duration:null});
+    const holdMatch=l.match(/^(\d+)\)\s*Hold\s+for\s+([\d.]+)\s*min\s+at\s+([-\d.]+).C/i);
+    if(holdMatch)methodSteps.push({num:+holdMatch[1],type:'isothermal',fromT:+holdMatch[3],toT:+holdMatch[3],rate:0,duration:+holdMatch[2]});
+  }
+  if(dataStart<0){alert(`${fname}: Data columns not found`);return;}
+  const rows=[];
+  for(let i=dataStart;i<lines.length;i++){
+    const c=lines[i].trim().split(/\t/);if(c.length<5)continue;
+    const n=c.map(v=>parseFloat(v.trim()));if(n.slice(0,5).some(isNaN))continue;
+    rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
+  }
+  if(!rows.length){alert(`${fname}: No numeric data`);return;}
+  const segments=assignSegments(rows,methodSteps).map((s,idx)=>({...s,idx,visible:true,selectedOuter:false,dOffset:0,yGain:1,outerOffset:0,outerGain:1,outerColor:'',outerLabel:''}));
+  const id=nextFid++;
+  files.push({id,name:fname,color:FC[(files.length)%FC.length],data:rows,segments,meta,dscChart:null,thermalChart:null,sidebarOpen:true,mode:'zoom',dscX:'temp',dscView:{xMin:null,xMax:null,yMin:null,yMax:null},thermalView:{xMin:null,xMax:null,yMin:null,yMax:null},dscBounds:{xMin:0,xMax:1,yMin:0,yMax:1},thermalBounds:{xMin:0,xMax:1,yMin:0,yMax:1},chartLayout:'col',chartScale:100,splitRatio:55});
+  renderAll();
+}
+function assignSegments(rows,methodSteps){
+  if(!methodSteps.length)return autoSegments(rows);
+  const N=rows.length,segments=[],time0=rows[0].time,time1=rows[N-1].time,measuredTotal=Math.max(1e-6,time1-time0);
+  const rawDur=methodSteps.map(st=>st.type==='isothermal'?Math.max(0,st.duration||0):((!isFinite(st.rate)||st.rate<=0)?0:Math.max(0,Math.abs(st.toT-st.fromT)/st.rate)));
+  let predTotal=rawDur.reduce((a,b)=>a+b,0);if(!isFinite(predTotal)||predTotal<=0)predTotal=measuredTotal;
+  const scale=measuredTotal/predTotal,cumEnds=[];let acc=0;rawDur.map(d=>Math.max(0,d*scale)).forEach(d=>{acc+=d;cumEnds.push(acc);});
+  let cursor=0;
+  methodSteps.forEach((step,si)=>{
+    if(cursor>=N-1)return;
+    let endIdx=si===methodSteps.length-1?N-1:Math.max(cursor+5,Math.min(nearestTimeIndex(rows,time0+cumEnds[si]),N-2));
+    if(endIdx<=cursor)endIdx=Math.min(cursor+10,N-1);
+    const sl=rows.slice(cursor,endIdx+1);
+    segments.push({...step,start:cursor,end:endIdx,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[cursor].time,tEnd:rows[endIdx].time});
+    cursor=endIdx+1;
+  });
+  if(!segments.length)return autoSegments(rows);
+  const last=segments[segments.length-1];
+  if(last.end<N-1){last.end=N-1;const sl=rows.slice(last.start,last.end+1);last.tmin=Math.min(...sl.map(r=>r.temp));last.tmax=Math.max(...sl.map(r=>r.temp));last.tEnd=rows[last.end].time;}
+  return segments;
+}
+function autoSegments(rows){
+  const segs=[];let dir=0,ss=0,idx=0;const sm=10;
+  const ld=i=>rows[Math.min(rows.length-1,i+sm)].temp-rows[Math.max(0,i-sm)].temp;
+  for(let i=sm;i<rows.length-sm;i+=5){
+    const d=ld(i),nd=Math.abs(d)<0.5?0:(d>0?1:-1);
+    if(nd!==dir&&i-ss>100){
+      if(i-ss>200){const sl=rows.slice(ss,i),tp=dir===1?'heating':dir===-1?'cooling':'isothermal';segs.push({num:idx+1,type:tp,start:ss,end:i-1,rate:15,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[ss].time,tEnd:rows[i-1].time});idx++;}
+      ss=i;dir=nd;
+    }
+  }
+  if(rows.length-ss>200){const sl=rows.slice(ss),tp=dir===1?'heating':dir===-1?'cooling':'isothermal';segs.push({num:idx+1,type:tp,start:ss,end:rows.length-1,rate:15,tmin:Math.min(...sl.map(r=>r.temp)),tmax:Math.max(...sl.map(r=>r.temp)),tStart:rows[ss].time,tEnd:rows[rows.length-1].time});}
+  return segs;
+}
+function nearestTimeIndex(rows,t){
+  if(!rows.length)return -1;if(t<=rows[0].time)return 0;if(t>=rows[rows.length-1].time)return rows.length-1;
+  let lo=0,hi=rows.length-1;while(lo<hi-1){const m=(lo+hi)>>1;if(rows[m].time<=t)lo=m;else hi=m;}
+  return Math.abs(rows[lo].time-t)<=Math.abs(rows[hi].time-t)?lo:hi;
+}
+function getSegPts(f,s,step=3,xMode='temp',useOuterAdjust=false){
+  return f.data.slice(s.start,s.end+1).filter((_,j)=>j%step===0).map(r=>{
+    const x=xMode==='temp'?+r.temp.toFixed(3):+r.time.toFixed(4);
+    let y=r.hf;
+    if(useOuterAdjust)y=y*s.outerGain+s.outerOffset;else y=y*s.yGain+s.dOffset;
+    return{x,y:+y.toFixed(5)};
+  });
+}
+function defaultOuterLabel(f,s){return `${f.name.replace(/\.[^.]+$/,'')} / Step${s.num}`;}
+function defaultOuterColor(f,s){return STYPE_COLOR[s.type]||f.color;}
+
+// ════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════
+function renderAll(){renderOuterChart();renderFileOuters();}
+
+function renderFileOuters(){
+  const grid=document.getElementById('chartsGrid');grid.innerHTML='';
+  files.forEach(f=>{
+    const outer=document.createElement('div');outer.className='chart-outer';
+    const isRow=f.chartLayout==='row';
+    const baseHeight=isRow?360:660;
+    const stackHeight=Math.max(300,Math.round(baseHeight*(f.chartScale/100)));
+    const split=clamp(f.splitRatio,20,80);
+    outer.innerHTML=`
+      <div class="chart-head">
+        <div class="chart-title">${f.name}</div>
+        <button class="btn" onclick="exportFileChart(${f.id},'dsc','png')">DSC PNG</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'dsc','pdf')">DSC PDF</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'thermal','png')">TH PNG</button>
+        <button class="btn" onclick="exportFileChart(${f.id},'thermal','pdf')">TH PDF</button>
+        <button class="btn" onclick="toggleFileSidebar(${f.id})">${f.sidebarOpen?'Hide':'Show'} Sidebar</button>
+        <button class="btn warn" onclick="removeFile(${f.id})">Remove</button>
+      </div>
+      <div class="chart-body ${f.sidebarOpen?'':'sidebar-hidden'}">
+        <div class="sidebar-wrap">${renderFileSidebarHtml(f)}</div>
+        <div class="chart-stack ${isRow?'row':'col'}" style="height:${stackHeight}px;--dsc-ratio:${split}%;--th-ratio:${100-split}%">
+          <div class="chart-pane">
+            <div class="pane-title">DSC</div>
+            <div class="canvas-wrap"><div class="zoom-box" id="dscZoomBox-${f.id}"></div><canvas id="dscCvs-${f.id}"></canvas></div>
+          </div>
+          <div class="chart-pane">
+            <div class="pane-title">Thermal</div>
+            <div class="canvas-wrap"><div class="zoom-box" id="thZoomBox-${f.id}"></div><canvas id="thCvs-${f.id}"></canvas></div>
+          </div>
+        </div>
+      </div>`;
+    grid.appendChild(outer);
+    renderFileCharts(f);
+  });
+}
+
+function renderFileSidebarHtml(f){
+  const selectedCount=f.segments.filter(s=>s.selectedOuter).length;
+  return `
+    <div class="sidebar-card">
+      <div class="lbl">Mode / X Axis</div>
+      <div class="btn-row">
+        <button class="btn ${f.mode==='zoom'?'on':''}" onclick="setFileMode(${f.id},'zoom')">Zoom</button>
+        <button class="btn ${f.mode==='lock'?'on':''}" onclick="setFileMode(${f.id},'lock')">Lock</button>
+        <button class="btn ${f.dscX==='temp'?'on':''}" onclick="setFileX(${f.id},'temp')">X:Temp</button>
+        <button class="btn ${f.dscX==='time'?'on':''}" onclick="setFileX(${f.id},'time')">X:Time</button>
+      </div>
+      <div class="lbl">Zoom</div>
+      <div class="btn-row">
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','x',0.85)">DSC X+</button><button class="btn" onclick="zoomFile(${f.id},'dsc','x',1.18)">DSC X-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'dsc','y',0.85)">DSC Y+</button><button class="btn" onclick="zoomFile(${f.id},'dsc','y',1.18)">DSC Y-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','x',0.85)">TH X+</button><button class="btn" onclick="zoomFile(${f.id},'thermal','x',1.18)">TH X-</button>
+        <button class="btn" onclick="zoomFile(${f.id},'thermal','y',0.85)">TH Y+</button><button class="btn" onclick="zoomFile(${f.id},'thermal','y',1.18)">TH Y-</button>
+      </div>
+      <div class="btn-row"><button class="btn" onclick="resetFileView(${f.id},'dsc')">Reset DSC</button><button class="btn" onclick="resetFileView(${f.id},'thermal')">Reset TH</button></div>
+      <div class="lbl">Layout / Scale</div>
+      <div class="btn-row">
+        <button class="btn ${f.chartLayout==='col'?'on':''}" onclick="setFileLayout(${f.id},'col')">Vertical</button>
+        <button class="btn ${f.chartLayout==='row'?'on':''}" onclick="setFileLayout(${f.id},'row')">Horizontal</button>
+      </div>
+      <div class="mini">Scale (%)</div><input class="num" type="number" value="${f.chartScale}" min="60" max="180" onchange="setFileScale(${f.id},this.value)">
+      <div class="mini">DSC/TH Split (DSC%)</div><input class="num" type="number" value="${f.splitRatio}" min="20" max="80" onchange="setFileSplitRatio(${f.id},this.value)">
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Display Span DSC</div>
+      <div class="mini" style="margin-bottom:2px">X: ${f.dscX==='temp'?'°C':'min'} &nbsp;|&nbsp; Y: mW/mg</div>
+      <div class="seg-grid">
+        <input class="num" id="fxMin-${f.id}" placeholder="x min" value="${fmt(f.dscView.xMin,3)}">
+        <input class="num" id="fxMax-${f.id}" placeholder="x max" value="${fmt(f.dscView.xMax,3)}">
+        <input class="num" id="fyMin-${f.id}" placeholder="y min" value="${fmt(f.dscView.yMin,4)}">
+        <input class="num" id="fyMax-${f.id}" placeholder="y max" value="${fmt(f.dscView.yMax,4)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyFileSpan(${f.id},'dsc')">Apply</button></div>
+      <div class="lbl">Display Span Thermal</div>
+      <div class="mini" style="margin-bottom:2px">X: min &nbsp;|&nbsp; Y: °C</div>
+      <div class="seg-grid">
+        <input class="num" id="ftxMin-${f.id}" placeholder="x min" value="${fmt(f.thermalView.xMin,3)}">
+        <input class="num" id="ftxMax-${f.id}" placeholder="x max" value="${fmt(f.thermalView.xMax,3)}">
+        <input class="num" id="ftyMin-${f.id}" placeholder="y min" value="${fmt(f.thermalView.yMin,3)}">
+        <input class="num" id="ftyMax-${f.id}" placeholder="y max" value="${fmt(f.thermalView.yMax,3)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyFileSpan(${f.id},'thermal')">Apply</button></div>
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Segments (Visible / Outer / Offset / Gain)</div>
+      <div class="seg-list">
+        ${f.segments.map(s=>`
+          <div class="seg-item">
+            <div class="seg-ctl">
+              <input type="checkbox" ${s.visible?'checked':''} onchange="toggleSegVisible(${f.id},${s.idx},this.checked)" title="Visible">
+              <input type="checkbox" ${s.selectedOuter?'checked':''} onchange="toggleSegOuter(${f.id},${s.idx},this.checked)" title="Outer">
+            </div>
+            <div class="seg-text">
+              <div><strong>Step ${s.num}</strong> <span class="mini">${s.type}</span></div>
+              <div class="mini">T:${s.tmin.toFixed(1)}→${s.tmax.toFixed(1)} / t:${s.tStart.toFixed(2)}→${s.tEnd.toFixed(2)}</div>
+              <div class="seg-grid">
+                <input class="num" type="number" value="${s.dOffset}" step="0.05" onchange="setSegOffset(${f.id},${s.idx},this.value)">
+                <input class="num" type="number" value="${s.yGain}" step="0.05" min="0.05" onchange="setSegGain(${f.id},${s.idx},this.value)">
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="mini" style="margin-top:4px">Outer selected: ${selectedCount} segments</div>
+    </div>`;
+}
+function fmt(v,d){return isFinite(v)?(+v).toFixed(d):'';}
+
+function renderFileCharts(f){
+  const dscCvs=document.getElementById(`dscCvs-${f.id}`);
+  const thCvs=document.getElementById(`thCvs-${f.id}`);
+  if(!dscCvs||!thCvs)return;
+  if(f.dscChart)f.dscChart.destroy();if(f.thermalChart)f.thermalChart.destroy();
+  const vis=f.segments.filter(s=>s.visible);
+  const all=f.segments; // thermal always shows all segments regardless of visible flag
+  const dscDatasets=[],thermalDatasets=[];
+  const dscBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  const thBounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  vis.forEach(s=>{
+    const dpts=getSegPts(f,s,3,f.dscX,false);
+    dpts.forEach(p=>{dscBounds.xMin=Math.min(dscBounds.xMin,p.x);dscBounds.xMax=Math.max(dscBounds.xMax,p.x);dscBounds.yMin=Math.min(dscBounds.yMin,p.y);dscBounds.yMax=Math.max(dscBounds.yMax,p.y);});
+    dscDatasets.push({label:`Step${s.num}`,data:dpts,borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
+  });
+  all.forEach(s=>{
+    const tpts=f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>({x:+r.time.toFixed(4),y:+r.temp.toFixed(3)}));
+    tpts.forEach(p=>{thBounds.xMin=Math.min(thBounds.xMin,p.x);thBounds.xMax=Math.max(thBounds.xMax,p.x);thBounds.yMin=Math.min(thBounds.yMin,p.y);thBounds.yMax=Math.max(thBounds.yMax,p.y);});
+    thermalDatasets.push({label:`Step${s.num}`,data:tpts,borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
+  });
+  if(!isFinite(dscBounds.xMin))Object.assign(dscBounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  if(!isFinite(thBounds.xMin))Object.assign(thBounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  f.dscBounds=dscBounds;f.thermalBounds=thBounds;
+  const chartDefaults={responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'}}}}};
+  f.dscChart=new Chart(dscCvs,{type:'line',data:{datasets:dscDatasets},options:{...chartDefaults,scales:{x:{type:'linear',min:f.dscView.xMin??undefined,max:f.dscView.xMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:f.dscX==='temp'?'Temperature (°C)':'Time (min)',color:chartTickColor()}},y:{min:f.dscView.yMin??undefined,max:f.dscView.yMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:'Heat Flow (mW/mg)',color:chartTickColor()}}}}});
+  f.thermalChart=new Chart(thCvs,{type:'line',data:{datasets:thermalDatasets},options:{...chartDefaults,scales:{x:{type:'linear',min:f.thermalView.xMin??undefined,max:f.thermalView.xMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:'Time (min)',color:chartTickColor()}},y:{min:f.thermalView.yMin??undefined,max:f.thermalView.yMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:'Temperature (°C)',color:chartTickColor()}}}}});
+  bindWheelZoom(dscCvs,()=>f.dscChart,f.dscView,f.dscBounds,()=>f.mode,()=>renderFileOuters());
+  bindWheelZoom(thCvs,()=>f.thermalChart,f.thermalView,f.thermalBounds,()=>f.mode,()=>renderFileOuters());
+  bindDragZoom(dscCvs,()=>f.dscChart,f.dscView,f.dscBounds,()=>f.mode,document.getElementById(`dscZoomBox-${f.id}`),()=>renderFileOuters());
+  bindDragZoom(thCvs,()=>f.thermalChart,f.thermalView,f.thermalBounds,()=>f.mode,document.getElementById(`thZoomBox-${f.id}`),()=>renderFileOuters());
+}
+
+// ════════════════════════════════════════════════
+//  FILE CONTROLS
+// ════════════════════════════════════════════════
+function findFile(fid){return files.find(f=>f.id===fid)||null;}
+function calcThermalBoundsFromVisible(f){
+  const b={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  f.segments.forEach(s=>{for(let i=s.start;i<=s.end;i+=3){const r=f.data[i];if(!r)continue;if(r.time<b.xMin)b.xMin=r.time;if(r.time>b.xMax)b.xMax=r.time;if(r.temp<b.yMin)b.yMin=r.temp;if(r.temp>b.yMax)b.yMax=r.temp;}});
+  if(!isFinite(b.xMin))return{xMin:0,xMax:1,yMin:0,yMax:1};return b;
+}
+function removeFile(fid){const f=findFile(fid);if(!f)return;if(f.dscChart)f.dscChart.destroy();if(f.thermalChart)f.thermalChart.destroy();files=files.filter(x=>x.id!==fid);renderAll();}
+function toggleFileSidebar(fid){const f=findFile(fid);if(!f)return;f.sidebarOpen=!f.sidebarOpen;renderFileOuters();}
+function setFileMode(fid,mode){const f=findFile(fid);if(!f)return;f.mode=mode==='lock'?'lock':'zoom';renderFileOuters();}
+function setFileX(fid,mode){const f=findFile(fid);if(!f)return;f.dscX=mode==='time'?'time':'temp';f.dscView={xMin:null,xMax:null,yMin:null,yMax:null};renderFileOuters();}
+function setFileLayout(fid,layout){const f=findFile(fid);if(!f)return;f.chartLayout=layout==='row'?'row':'col';renderFileOuters();}
+function setFileScale(fid,v){const f=findFile(fid);if(!f)return;const n=parseInt(v,10);f.chartScale=clamp(isNaN(n)?100:n,60,180);renderFileOuters();}
+function setFileSplitRatio(fid,v){const f=findFile(fid);if(!f)return;const n=parseInt(v,10);f.splitRatio=clamp(isNaN(n)?55:n,20,80);renderFileOuters();}
+function toggleSegVisible(fid,idx,checked){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.visible=!!checked;renderFileOuters();}
+function toggleSegOuter(fid,idx,checked){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.selectedOuter=!!checked;renderAll();}
+function setSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.dOffset=isNaN(n)?0:n;renderFileOuters();}
+function setSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.yGain=(isNaN(n)||n<=0)?1:n;renderFileOuters();}
+function resetFileView(fid,which){
+  const f=findFile(fid);if(!f)return;
+  if(which==='dsc')f.dscView={xMin:null,xMax:null,yMin:null,yMax:null};
+  else{const b=calcThermalBoundsFromVisible(f);const yPad=Math.max(0.5,(b.yMax-b.yMin)*0.05);f.thermalView={xMin:b.xMin,xMax:b.xMax,yMin:b.yMin-yPad,yMax:b.yMax+yPad};}
+  renderFileOuters();
+}
+function zoomFile(fid,which,axis,factor){
+  const f=findFile(fid);if(!f)return;const chart=which==='dsc'?f.dscChart:f.thermalChart;const view=which==='dsc'?f.dscView:f.thermalView;const bounds=which==='dsc'?f.dscBounds:f.thermalBounds;if(!chart)return;
+  const sx=chart.scales.x,sy=chart.scales.y;
+  if(axis==='x'){const c=(sx.min+sx.max)/2;const curMin=view.xMin??sx.min,curMax=view.xMax??sx.max;const next=zoomRange(curMin,curMax,c,factor,bounds.xMin,bounds.xMax);view.xMin=next[0];view.xMax=next[1];}
+  else{const c=(sy.min+sy.max)/2;const curMin=view.yMin??sy.min,curMax=view.yMax??sy.max;const next=zoomRange(curMin,curMax,c,factor,bounds.yMin,bounds.yMax);view.yMin=next[0];view.yMax=next[1];}
+  renderFileOuters();
+}
+function applyFileSpan(fid,which){
+  const f=findFile(fid);if(!f)return;
+  if(which==='dsc'){const xMin=parseFloat(document.getElementById(`fxMin-${fid}`).value),xMax=parseFloat(document.getElementById(`fxMax-${fid}`).value),yMin=parseFloat(document.getElementById(`fyMin-${fid}`).value),yMax=parseFloat(document.getElementById(`fyMax-${fid}`).value);f.dscView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};}
+  else{const xMin=parseFloat(document.getElementById(`ftxMin-${fid}`).value),xMax=parseFloat(document.getElementById(`ftxMax-${fid}`).value),yMin=parseFloat(document.getElementById(`ftyMin-${fid}`).value),yMax=parseFloat(document.getElementById(`ftyMax-${fid}`).value);f.thermalView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};}
+  renderFileOuters();
+}
+
+// ════════════════════════════════════════════════
+//  OUTER CHART
+// ════════════════════════════════════════════════
+function selectedOuterSegs(){const arr=[];files.forEach(f=>f.segments.filter(s=>s.selectedOuter).forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));return arr;}
+function renderOuterChart(){
+  const wrap=document.getElementById('outerWrap');const sel=selectedOuterSegs();
+  if(!sel.length){if(outerChart){outerChart.destroy();outerChart=null;}wrap.innerHTML='<div class="outer-placeholder">Enable "Outer" on any segment to show it here.</div>';return;}
+  wrap.innerHTML=`
+    <div class="chart-outer">
+      <div class="chart-head">
+        <div class="chart-title">Outer Chart (${sel.length} segments)</div>
+        <button class="btn" onclick="exportOuterChart('png')">PNG</button>
+        <button class="btn" onclick="exportOuterChart('pdf')">PDF</button>
+        <button class="btn" onclick="toggleOuterSidebar()">${outerSidebarOpen?'Hide':'Show'} Sidebar</button>
+      </div>
+      <div class="chart-body ${outerSidebarOpen?'':'sidebar-hidden'}">
+        <div class="sidebar-wrap">${renderOuterSidebarHtml(sel)}</div>
+        <div class="chart-pane" style="height:${outerHeight}px">
+          <div class="pane-title">Combined DSC</div>
+          <div class="canvas-wrap"><div class="zoom-box" id="outerZoomBox"></div><canvas id="outerChartCvs"></canvas></div>
+        </div>
+      </div>
+    </div>`;
+  const datasets=[];const bounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
+  sel.forEach(({f,s})=>{const pts=getSegPts(f,s,3,outerXAxis,true);pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});datasets.push({label:(s.outerLabel||defaultOuterLabel(f,s)),data:pts,borderColor:(s.outerColor||defaultOuterColor(f,s)),borderWidth:1.8,pointRadius:0,tension:0.1,fill:false});});
+  if(!isFinite(bounds.xMin))Object.assign(bounds,{xMin:0,xMax:1,yMin:0,yMax:1});
+  outerBounds=bounds;if(outerChart)outerChart.destroy();
+  outerChart=new Chart(document.getElementById('outerChartCvs'),{type:'line',data:{datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:true,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'}}}},scales:{x:{type:'linear',min:outerView.xMin??undefined,max:outerView.xMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:outerXAxis==='temp'?'Temperature (°C)':'Time (min)',color:chartTickColor()}},y:{min:outerView.yMin??undefined,max:outerView.yMax??undefined,grid:{color:chartGridColor()},ticks:{color:chartTickColor()},title:{display:true,text:'Heat Flow (mW/mg)',color:chartTickColor()}}}}});
+  bindWheelZoom(document.getElementById('outerChartCvs'),()=>outerChart,outerView,outerBounds,()=>'zoom',()=>renderOuterChart());
+  bindDragZoom(document.getElementById('outerChartCvs'),()=>outerChart,outerView,outerBounds,()=>'zoom',document.getElementById('outerZoomBox'),()=>renderOuterChart());
+}
+function renderOuterSidebarHtml(sel){
+  return `
+    <div class="sidebar-card">
+      <div class="lbl">X Axis / Zoom / Size</div>
+      <div class="btn-row">
+        <button class="btn ${outerXAxis==='temp'?'on':''}" onclick="setOuterX('temp')">X:Temp</button>
+        <button class="btn ${outerXAxis==='time'?'on':''}" onclick="setOuterX('time')">X:Time</button>
+        <button class="btn" onclick="resetOuterView()">Reset</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn" onclick="zoomOuter('x',0.85)">X+</button><button class="btn" onclick="zoomOuter('x',1.18)">X-</button>
+        <button class="btn" onclick="zoomOuter('y',0.85)">Y+</button><button class="btn" onclick="zoomOuter('y',1.18)">Y-</button>
+      </div>
+      <div class="mini">Height</div><input class="num" type="number" min="260" max="1000" value="${outerHeight}" onchange="setOuterHeight(this.value)">
+      <div class="lbl">Display Span</div>
+      <div class="mini" style="margin-bottom:2px">X: ${outerXAxis==='temp'?'°C':'min'} &nbsp;|&nbsp; Y: mW/mg</div>
+      <div class="seg-grid">
+        <input class="num" id="oxMin" placeholder="x min" value="${fmt(outerView.xMin,3)}">
+        <input class="num" id="oxMax" placeholder="x max" value="${fmt(outerView.xMax,3)}">
+        <input class="num" id="oyMin" placeholder="y min" value="${fmt(outerView.yMin,4)}">
+        <input class="num" id="oyMax" placeholder="y max" value="${fmt(outerView.yMax,4)}">
+      </div>
+      <div class="btn-row"><button class="btn" onclick="applyOuterSpan()">Apply</button></div>
+    </div>
+    <div class="sidebar-card">
+      <div class="lbl">Selected Segments</div>
+      <div class="seg-list" style="max-height:290px">
+      ${sel.map(({f,s})=>`
+        <div class="seg-item">
+          <div class="seg-text">
+            <div><strong>${f.name.replace(/\.[^.]+$/,'')}</strong> / Step ${s.num}</div>
+            <div class="mini">${s.type}</div>
+            <div class="mini">Label</div>
+            <input class="num" type="text" value="${(s.outerLabel||'').replace(/"/g,'&quot;')}" placeholder="${defaultOuterLabel(f,s)}" onchange="setOuterSegLabel(${f.id},${s.idx},this.value)">
+            <div class="mini" style="margin-top:4px">Color</div>
+            <input class="num" type="color" value="${s.outerColor||defaultOuterColor(f,s)}" onchange="setOuterSegColor(${f.id},${s.idx},this.value)">
+            <div class="seg-grid">
+              <input class="num" type="number" step="0.05" value="${s.outerOffset}" onchange="setOuterSegOffset(${f.id},${s.idx},this.value)">
+              <input class="num" type="number" step="0.05" min="0.05" value="${s.outerGain}" onchange="setOuterSegGain(${f.id},${s.idx},this.value)">
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      </div>
+    </div>`;
+}
+function toggleOuterSidebar(){outerSidebarOpen=!outerSidebarOpen;renderOuterChart();}
+function setOuterX(mode){outerXAxis=mode==='time'?'time':'temp';outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
+function setOuterHeight(v){const n=parseInt(v,10);outerHeight=clamp(isNaN(n)?400:n,260,1000);renderOuterChart();}
+function resetOuterView(){outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
+function applyOuterSpan(){
+  const xMin=parseFloat(document.getElementById('oxMin').value),xMax=parseFloat(document.getElementById('oxMax').value),yMin=parseFloat(document.getElementById('oyMin').value),yMax=parseFloat(document.getElementById('oyMax').value);
+  outerView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};renderOuterChart();
+}
+function zoomOuter(axis,factor){
+  if(!outerChart)return;const sx=outerChart.scales.x,sy=outerChart.scales.y;
+  if(axis==='x'){const c=(sx.min+sx.max)/2,curMin=outerView.xMin??sx.min,curMax=outerView.xMax??sx.max,next=zoomRange(curMin,curMax,c,factor,outerBounds.xMin,outerBounds.xMax);outerView.xMin=next[0];outerView.xMax=next[1];}
+  else{const c=(sy.min+sy.max)/2,curMin=outerView.yMin??sy.min,curMax=outerView.yMax??sy.max,next=zoomRange(curMin,curMax,c,factor,outerBounds.yMin,outerBounds.yMax);outerView.yMin=next[0];outerView.yMax=next[1];}
+  renderOuterChart();
+}
+function setOuterSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerOffset=isNaN(n)?0:n;renderOuterChart();}
+function setOuterSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerGain=(isNaN(n)||n<=0)?1:n;renderOuterChart();}
+function setOuterSegLabel(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerLabel=(v||'').trim();renderOuterChart();}
+function setOuterSegColor(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerColor=typeof v==='string'?v:'';renderOuterChart();}
+function exportFileChart(fid,which,format){const f=findFile(fid);if(!f)return;const chart=which==='thermal'?f.thermalChart:f.dscChart;exportChartImage(chart,`${f.name.replace(/\.[^.]+$/,'')}_${which}_${getDateStamp()}`,format);}
+function exportOuterChart(format){if(!outerChart){alert('Outer chart not ready');return;}exportChartImage(outerChart,`outer_chart_${getDateStamp()}`,format);}
+
+// ════════════════════════════════════════════════
+//  SERIALIZE / HYDRATE  (project JSON)
+// ════════════════════════════════════════════════
+function serializeProject(){
+  return{version:2,savedAt:new Date().toISOString(),nextFid,outer:{outerSidebarOpen,outerXAxis,outerHeight,outerView},files:files.map(f=>({id:f.id,name:f.name,color:f.color,meta:f.meta,data:f.data,chartLayout:f.chartLayout,chartScale:f.chartScale,splitRatio:f.splitRatio,sidebarOpen:f.sidebarOpen,mode:f.mode,dscX:f.dscX,dscView:f.dscView,thermalView:f.thermalView,segments:f.segments.map(s=>({...s}))}))};
+}
+function serializeDataOnly(){return{version:2,savedAt:new Date().toISOString(),files:files.map(f=>({name:f.name,meta:f.meta,data:f.data}))};}
+function hydrateProject(payload,{replace=true,dataOnly=false}={}){
+  if(!payload||!Array.isArray(payload.files)){alert('Invalid JSON format');return;}
+  if(replace){files.forEach(f=>{if(f.dscChart)f.dscChart.destroy();if(f.thermalChart)f.thermalChart.destroy();});files=[];}
+  if(!dataOnly){outerSidebarOpen=payload.outer?.outerSidebarOpen??outerSidebarOpen;outerXAxis=payload.outer?.outerXAxis==='time'?'time':'temp';outerHeight=clamp(parseInt(payload.outer?.outerHeight,10)||outerHeight,260,1000);outerView=payload.outer?.outerView||{xMin:null,xMax:null,yMin:null,yMax:null};}
+  payload.files.forEach((src,idx)=>{
+    const id=nextFid++;const rows=Array.isArray(src.data)?src.data:[];if(!rows.length)return;
+    const segSource=Array.isArray(src.segments)&&src.segments.length?src.segments:assignSegments(rows,[]);
+    const segments=segSource.map((s,i)=>({...s,idx:i,num:s.num??(i+1),visible:s.visible!==false,selectedOuter:!!s.selectedOuter,dOffset:isFinite(s.dOffset)?s.dOffset:0,yGain:(isFinite(s.yGain)&&s.yGain>0)?s.yGain:1,outerOffset:isFinite(s.outerOffset)?s.outerOffset:0,outerGain:(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1,outerColor:typeof s.outerColor==='string'?s.outerColor:'',outerLabel:typeof s.outerLabel==='string'?s.outerLabel:''}));
+    files.push({id,name:src.name||`loaded_${idx+1}.txt`,color:src.color||FC[(files.length)%FC.length],meta:src.meta||{},data:rows,segments,dscChart:null,thermalChart:null,sidebarOpen:src.sidebarOpen!==false,mode:src.mode==='lock'?'lock':'zoom',dscX:src.dscX==='time'?'time':'temp',dscView:src.dscView||{xMin:null,xMax:null,yMin:null,yMax:null},thermalView:src.thermalView||{xMin:null,xMax:null,yMin:null,yMax:null},dscBounds:{xMin:0,xMax:1,yMin:0,yMax:1},thermalBounds:{xMin:0,xMax:1,yMin:0,yMax:1},chartLayout:src.chartLayout==='row'?'row':'col',chartScale:clamp(parseInt(src.chartScale,10)||100,60,180),splitRatio:clamp(parseInt(src.splitRatio,10)||55,20,80)});
+  });
+  renderAll();
+}
+function exportProjectJson(){downloadText(`dsc_project_${getDateStamp()}.json`,JSON.stringify(serializeProject()));}
+function importProjectJson(file){const r=new FileReader();r.onload=e=>{try{hydrateProject(JSON.parse(e.target.result),{replace:true,dataOnly:false});toast('Project imported');}catch(_e){alert('Invalid project JSON');}};r.readAsText(file,'UTF-8');}
+function exportDataJson(){downloadText(`dsc_data_${getDateStamp()}.json`,JSON.stringify(serializeDataOnly()));}
+function importDataJson(file){const r=new FileReader();r.onload=e=>{try{hydrateProject(JSON.parse(e.target.result),{replace:false,dataOnly:true});toast('Data imported');}catch(_e){alert('Invalid data JSON');}};r.readAsText(file,'UTF-8');}
+
+
+// ════════════════════════════════════════════════
+//  THEME
+// ════════════════════════════════════════════════
+let isLight = localStorage.getItem('dsc_theme') !== 'dark';
+function applyTheme(){
+  document.documentElement.classList.toggle('light', isLight);
+  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
+  // re-render charts with correct grid colors
+  if(files.length) renderFileOuters();
+  if(outerChart) renderOuterChart();
+}
+function toggleTheme(){
+  isLight = !isLight;
+  localStorage.setItem('dsc_theme', isLight ? 'light' : 'dark');
+  applyTheme();
+}
+function chartGridColor(){ return isLight ? '#e8e8e4' : '#222'; }
+function chartTickColor(){ return isLight ? '#aaa' : '#666'; }
+
+
+async function exportFullDb(){
+  try{
+    const [allFiles, allProjects] = await Promise.all([
+      adapter.listFiles(),
+      adapter.listProjects()
+    ]);
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      adapterName: adapter.name,
+      files: allFiles,
+      projects: allProjects
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dsc_db_full_${getDateStamp()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`DB exported — ${allFiles.length} files, ${allProjects.length} projects`);
+  } catch(e){ toast('Export error: '+e.message,'err'); }
+}
+
+async function importFullDb(file){
+  const r = new FileReader();
+  r.onload = async e => {
+    try{
+      const payload = JSON.parse(e.target.result);
+      if(!Array.isArray(payload.files)||!Array.isArray(payload.projects)) throw new Error('Invalid DB dump format');
+      const fc = payload.files.length, pc = payload.projects.length;
+      const exportedAt = payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : '不明';
+      const msg = `DB dump を読み込みます\n\nExport日時: ${exportedAt}\nFiles: ${fc} 件 / Projects: ${pc} 件\n\nOK = 上書き（既存データを全削除）\nキャンセル = マージ確認へ`;
+      const choice = window.confirm(msg);
+      let mode;
+      if(choice){
+        mode = 'replace';
+      } else {
+        const merge = window.confirm('マージモードで読み込みますか？\n同名ファイル・プロジェクトはスキップされます\n\nOK = マージ / キャンセル = 中止');
+        if(!merge) return;
+        mode = 'merge';
+      }
+      if(mode==='replace'){
+        await adapter.clearFiles();
+        await adapter.clearProjects();
+      }
+      let fImported=0, fSkipped=0;
+      const existingFiles = mode==='merge' ? await adapter.listFiles() : [];
+      for(const f of payload.files){
+        if(mode==='merge' && existingFiles.find(x=>x.name===f.name)){ fSkipped++; continue; }
+        const {id:_,...rest}=f;
+        await adapter.saveFile(rest);
+        fImported++;
+      }
+      let pImported=0, pSkipped=0;
+      const existingProjects = mode==='merge' ? await adapter.listProjects() : [];
+      for(const p of payload.projects){
+        if(mode==='merge' && existingProjects.find(x=>x.name===p.name && x.savedAt===p.savedAt)){ pSkipped++; continue; }
+        const {id:_,...rest}=p;
+        await adapter.saveProject(rest);
+        pImported++;
+      }
+      await refreshDbPanels();
+      const skipMsg = (fSkipped+pSkipped)>0 ? ` (${fSkipped+pSkipped} skipped)` : '';
+      toast(`Imported: ${fImported} files, ${pImported} projects${skipMsg}`);
+    } catch(err){ toast('Import error: '+err.message,'err'); }
+  };
+  r.readAsText(file,'UTF-8');
+}
+
+// ════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════
+(async()=>{
+  document.getElementById('adapterBadge').className='adapter-badge idb';
+  document.getElementById('dbImportIn').addEventListener('change', e=>{
+    const file=e.target.files?.[0]; if(file) importFullDb(file); e.target.value='';
+  });
+  applyTheme();
+  await refreshDbPanels();
+  renderOuterChart();
+})();
+</script>
+</body>
+</html>
