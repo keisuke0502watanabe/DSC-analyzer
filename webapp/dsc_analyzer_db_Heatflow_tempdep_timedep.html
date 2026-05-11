@@ -56,9 +56,12 @@ code,input[type=number],input[type=text],.mono{font-family:'IBM Plex Mono',monos
 .app{display:flex;flex:1;height:100vh;overflow:hidden}
 .sidebar{width:var(--panel-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .2s}
 .sidebar.collapsed{width:0;border-right:none}
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.app-notice{display:none;font-size:11px;line-height:1.4;padding:.45rem .85rem;background:#3d3420;border-bottom:1px solid var(--border2);color:#f0e6c6;flex-shrink:0;white-space:pre-wrap;word-break:break-word}
+:root.light .app-notice{background:#fff3cd;border-color:#d9b24a;color:#4a3d08}
+.app-notice.app-notice--on{display:block}
 
-.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem;height:44px;display:flex;align-items:center;gap:8px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem;height:44px;display:flex;align-items:center;gap:8px;flex-shrink:0;overflow-x:auto;scrollbar-width:none;min-height:44px}
 .topbar::-webkit-scrollbar{display:none}
 .topbar-brand{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;color:var(--text);letter-spacing:.02em;margin-right:8px}
 .topbar-brand span{color:var(--accent);font-size:11px}
@@ -118,6 +121,11 @@ input[type=file]{display:none}
 .chart-body.sidebar-hidden .sidebar-wrap{display:none}
 .sidebar-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
 .sidebar-card{border:1px solid var(--border);border-radius:6px;padding:7px;background:var(--bg3)}
+.acc-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;border:none;color:inherit;padding:0;cursor:pointer}
+.acc-head .lbl{margin:0}
+.acc-toggle{font-size:12px;color:var(--text2);line-height:1}
+.acc-body{margin-top:6px}
+.acc-body.closed{display:none}
 .seg-list{max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg2)}
 .seg-item{padding:5px 7px;border-bottom:1px solid var(--border);display:flex;gap:5px;align-items:flex-start;font-size:11px}
 .seg-item:last-child{border-bottom:none}
@@ -137,7 +145,7 @@ canvas{width:100%;height:100%}
 .lbl{font-size:10px;color:var(--text3);margin-top:7px;margin-bottom:3px}
 .mini{font-size:10px;color:var(--text3)}
 
-.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:.5rem .9rem;font-size:11px;color:var(--text);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:999;font-family:'IBM Plex Mono',monospace}
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:2147483000;max-width:min(96vw,440px);background:var(--bg4);border:1px solid var(--border2);box-shadow:0 4px 24px rgba(0,0,0,.22);border-radius:6px;padding:.5rem .9rem;font-size:11px;line-height:1.35;color:var(--text);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap;word-break:break-word}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast.ok{border-color:var(--green);color:var(--green)}
 .toast.err{border-color:var(--warn);color:var(--warn)}
@@ -194,6 +202,7 @@ canvas{width:100%;height:100%}
 </div>
 
 <div class="main">
+  <div id="appNotice" class="app-notice" role="status" aria-live="polite"></div>
   <div class="topbar">
     <button class="btn" onclick="toggleSidebar()" title="Toggle DB panel">☰</button>
     <span class="topbar-brand">DSC Analyzer <span>HF · TEMP-DEP × TIME-DEP</span></span>
@@ -236,6 +245,7 @@ canvas{width:100%;height:100%}
   <div class="modal">
     <h3>Save Project</h3>
     <input type="text" id="projectNameInput" placeholder="Project name…" onkeydown="if(event.key==='Enter')confirmSaveProject()">
+    <input type="text" id="projectFolderInput" placeholder="Folder (optional, e.g. BatchA / Run1)">
     <input type="text" id="projectTagInput" placeholder="Tags (comma separated, optional)">
     <div class="btn-row">
       <button class="btn" onclick="closeSaveModal()">Cancel</button>
@@ -296,30 +306,86 @@ class IndexedDBAdapter extends StorageAdapter {
       req.onerror=e=>rej(e.target.error);
     });
   }
+  /** Resolve on transaction `complete` so a follow-up read sees committed data (same pattern as XRD analyzer). */
   async _tx(store,mode,fn){
     const db=await this._open();
     return new Promise((res,rej)=>{
-      const tx=db.transaction(store,mode),st=tx.objectStore(store),req=fn(st);
-      req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);
+      let req;
+      try{
+        const tx=db.transaction(store,mode);
+        const st=tx.objectStore(store);
+        req=fn(st);
+      }catch(err){rej(err);return;}
+      if(!req){rej(new Error('IDB: no request'));return;}
+      let settled=false;
+      const ok=()=>{if(settled)return;settled=true;res(req.result);};
+      const bad=err=>{if(settled)return;settled=true;rej(err||new Error('IDB transaction failed'));};
+      req.onerror=()=>bad(req.error);
+      const idbTx=req.transaction;
+      idbTx.onerror=()=>bad(idbTx.error);
+      idbTx.onabort=()=>bad(idbTx.error||new DOMException('aborted','AbortError'));
+      idbTx.oncomplete=ok;
     });
   }
-  async _txAll(store,fn){
+  /** Cursor read so `id` is always set from primaryKey when inline key is missing from stored values. */
+  async _listAllWithKeys(storeName){
     const db=await this._open();
     return new Promise((res,rej)=>{
-      const tx=db.transaction(store,'readonly'),st=tx.objectStore(store),req=st.getAll();
-      req.onsuccess=()=>res(fn?fn(req.result):req.result);req.onerror=()=>rej(req.error);
+      const out=[];
+      const tx=db.transaction(storeName,'readonly');
+      const st=tx.objectStore(storeName);
+      const rq=st.openCursor();
+      rq.onsuccess=e=>{
+        const c=e.target.result;
+        if(!c)return;
+        const v=c.value;
+        if(v&&typeof v==='object'){
+          const pk=c.primaryKey;
+          out.push({...v,id:v.id!=null&&v.id!==''?v.id:pk});
+        }
+        c.continue();
+      };
+      rq.onerror=()=>rej(rq.error);
+      tx.onerror=()=>rej(tx.error);
+      tx.oncomplete=()=>res(out);
     });
   }
   async saveFile(o){return this._tx('files','readwrite',st=>st.put({...o,savedAt:new Date().toISOString()}));}
-  async listFiles(){return this._txAll('files');}
+  async listFiles(){return this._listAllWithKeys('files');}
   async getFile(id){return this._tx('files','readonly',st=>st.get(id));}
   async deleteFile(id){return this._tx('files','readwrite',st=>st.delete(id));}
-  async clearFiles(){const db=await this._open();return new Promise((res,rej)=>{const r=db.transaction('files','readwrite').objectStore('files').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
+  async clearFiles(){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction('files','readwrite');
+      let settled=false;
+      const done=()=>{if(settled)return;settled=true;res();};
+      const bad=e=>{if(settled)return;settled=true;rej(e||new Error('clear files'));};
+      tx.oncomplete=done;
+      tx.onerror=()=>bad(tx.error);
+      tx.onabort=()=>bad(tx.error);
+      const r=tx.objectStore('files').clear();
+      r.onerror=()=>bad(r.error);
+    });
+  }
   async saveProject(o){return this._tx('projects','readwrite',st=>st.put({...o,savedAt:new Date().toISOString()}));}
-  async listProjects(){return this._txAll('projects');}
+  async listProjects(){return this._listAllWithKeys('projects');}
   async getProject(id){return this._tx('projects','readonly',st=>st.get(id));}
   async deleteProject(id){return this._tx('projects','readwrite',st=>st.delete(id));}
-  async clearProjects(){const db=await this._open();return new Promise((res,rej)=>{const r=db.transaction('projects','readwrite').objectStore('projects').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error);});}
+  async clearProjects(){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction('projects','readwrite');
+      let settled=false;
+      const done=()=>{if(settled)return;settled=true;res();};
+      const bad=e=>{if(settled)return;settled=true;rej(e||new Error('clear projects'));};
+      tx.oncomplete=done;
+      tx.onerror=()=>bad(tx.error);
+      tx.onabort=()=>bad(tx.error);
+      const r=tx.objectStore('projects').clear();
+      r.onerror=()=>bad(r.error);
+    });
+  }
 }
 
 let adapter=new IndexedDBAdapter();
@@ -333,9 +399,13 @@ const STYPE_COLOR={heating:'#e8644a',cooling:'#4a9eff',isothermal:'#888'};
 
 let files=[]; let nextFid=1;
 let outerChart=null; let outerSidebarOpen=true;
+let outerChartOpen=true;
 let outerXAxis='time'; let outerYAxis='heatflow'; let outerHeight=400;
+let outerShowAllTempSegments=false;
 let outerView={xMin:null,xMax:null,yMin:null,yMax:null};
 let outerBounds={xMin:0,xMax:1,yMin:0,yMax:1};
+let outerAcc={axes:true,segments:true};
+const fileAcc={};
 let sidebarOpen=true;
 
 // ════════════════════════════════════════════════
@@ -344,11 +414,35 @@ let sidebarOpen=true;
 let toastTimer=null;
 function toast(msg,type='ok'){
   const el=document.getElementById('toast');
-  el.textContent=msg;el.className=`toast show ${type}`;
-  clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
+  if(!el)return;
+  el.textContent=msg;el.className=`toast show ${type==='err'?'err':'ok'}`;
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4000);
+  try{console.info('[toast]',type,msg);}catch(_e){}
+}
+/** file:// / 埋め込みフレーム / CDN 失敗の注意（XRD analyzer と同方針） */
+function runEnvironmentChecks(){
+  const lines=[];
+  try{
+    if(window.top!==window.self)lines.push('埋め込みフレームで開いています（エディタ内プレビュー等）。file:// ではオリジンが別扱いになり、IndexedDB や表示が不安定になることがあります。');
+  }catch(_e){lines.push('埋め込み判定できません（cross-origin 制限）。');}
+  if(location.protocol==='file:')lines.push('file:// で開いています。確実に試すにはターミナルで: cd …/DSC-analyzer/webapp && python3 -m http.server 8766 → ブラウザで http://127.0.0.1:8766/dsc_analyzer_db_Heatflow_tempdep_timedep.html');
+  if(typeof Chart==='undefined')lines.push('Chart.js が読み込まれていません（CDN ブロック・オフライン等）。');
+  if(typeof indexedDB==='undefined')lines.push('IndexedDB が無いため DB キャッシュは使えません。');
+  const box=document.getElementById('appNotice');
+  if(!box)return;
+  if(!lines.length){box.textContent='';box.classList.remove('app-notice--on');return;}
+  box.textContent=lines.join('\n\n');
+  box.classList.add('app-notice--on');
+  try{console.warn('[DSC env]',lines.join(' | '));}catch(_e){}
 }
 function toggleSidebar(){sidebarOpen=!sidebarOpen;document.getElementById('dbSidebar').classList.toggle('collapsed',!sidebarOpen);}
-function openSaveProjectModal(){document.getElementById('projectNameInput').value=`Project ${getDateStamp()}`;document.getElementById('projectTagInput').value='';document.getElementById('saveModal').classList.add('show');setTimeout(()=>document.getElementById('projectNameInput').select(),80);}
+function openSaveProjectModal(){
+  document.getElementById('projectNameInput').value=`Project ${getDateStamp()}`;
+  document.getElementById('projectFolderInput').value='';
+  document.getElementById('projectTagInput').value='';
+  document.getElementById('saveModal').classList.add('show');
+  setTimeout(()=>document.getElementById('projectNameInput').select(),80);
+}
 function closeSaveModal(){document.getElementById('saveModal').classList.remove('show');}
 document.getElementById('saveModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeSaveModal();});
 
@@ -356,9 +450,17 @@ document.getElementById('saveModal').addEventListener('click',e=>{if(e.target===
 //  DB PANEL RENDERING
 // ════════════════════════════════════════════════
 let dbFileCache=[];let dbProjectCache=[];let fileSearchQuery='';
+const projectFolderOpenState={};
 async function refreshDbPanels(){
-  try{dbFileCache=await adapter.listFiles();dbProjectCache=await adapter.listProjects();renderDbFileList();renderDbProjectList();}
-  catch(e){toast('DB read error: '+e.message,'err');}
+  try{
+    let fc=await adapter.listFiles().catch(()=>[]);
+    let pc=await adapter.listProjects().catch(()=>[]);
+    if(!Array.isArray(fc))fc=[];
+    if(!Array.isArray(pc))pc=[];
+    dbFileCache=fc.filter(x=>x&&typeof x==='object'&&x.id!=null);
+    dbProjectCache=pc.filter(x=>x&&typeof x==='object'&&x.id!=null);
+    renderDbFileList();renderDbProjectList();
+  }catch(e){console.error(e);toast('DB read error: '+e.message,'err');}
 }
 function filterDbFiles(){fileSearchQuery=document.getElementById('fileSearch').value.toLowerCase();renderDbFileList();}
 function renderDbFileList(){
@@ -379,19 +481,87 @@ function renderDbFileList(){
 function renderDbProjectList(){
   const el=document.getElementById('dbProjectList');
   if(!dbProjectCache.length){el.innerHTML='<div class="db-empty">No saved projects</div>';return;}
-  el.innerHTML=dbProjectCache.map(p=>{
+  const sorted=[...dbProjectCache].sort((a,b)=>{
+    const fa=normalizeFolderPath(a.folder||'').toLowerCase(),fb=normalizeFolderPath(b.folder||'').toLowerCase();
+    if(fa<fb)return-1;if(fa>fb)return 1;
+    const ta=new Date(a.savedAt||0).getTime(),tb=new Date(b.savedAt||0).getTime();
+    return tb-ta;
+  });
+  const root={children:new Map(),projects:[]};
+  sorted.forEach(p=>{
+    const folderPath=normalizeFolderPath(p.folder||'');
+    if(!folderPath){root.projects.push(p);return;}
+    const parts=folderPath.split('/').filter(Boolean);
+    let node=root;
+    parts.forEach(part=>{
+      if(!node.children.has(part))node.children.set(part,{children:new Map(),projects:[]});
+      node=node.children.get(part);
+    });
+    node.projects.push(p);
+  });
+  function renderProjectRow(p,depth=0){
     const d=new Date(p.savedAt),ds=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     const tags=(p.tags||[]).map(t=>`<span class="db-file-tag">${esc(t)}</span>`).join(' ');
     const fc=(p.payload?.files||[]).length;
-    return `<div class="db-project" onclick="loadProjectFromDb(${p.id})">
+    return `<div class="db-project" onclick="loadProjectFromDb(${p.id})" style="padding-left:${12+depth*14}px">
       <div style="flex:1;min-width:0">
         <div class="db-project-name" title="${esc(p.name)}">${esc(p.name)}</div>
         <div class="db-project-meta">${ds} · ${fc} file(s)</div>
         ${tags?`<div style="margin-top:3px">${tags}</div>`:''}
       </div>
-      <div class="db-project-actions"><button class="btn warn" onclick="event.stopPropagation();deleteDbProject(${p.id})" title="Delete">✕</button></div>
+      <div class="db-project-actions">
+        <button class="btn" onclick="event.stopPropagation();moveDbProjectFolder(${p.id})" title="Move folder">📁</button>
+        <button class="btn" onclick="event.stopPropagation();renameDbProject(${p.id})" title="Rename">✎</button>
+        <button class="btn warn" onclick="event.stopPropagation();deleteDbProject(${p.id})" title="Delete">✕</button>
+      </div>
     </div>`;
-  }).join('');
+  }
+  function countNodeProjects(node){
+    let c=node.projects.length;
+    node.children.forEach(ch=>{c+=countNodeProjects(ch);});
+    return c;
+  }
+  function renderFolderNode(name,node,pathParts,depth){
+    const nodeKey=pathParts.join('/');
+    if(projectFolderOpenState[nodeKey]===undefined)projectFolderOpenState[nodeKey]=true;
+    const open=projectFolderOpenState[nodeKey]!==false;
+    let h=`<div class="sb-section" style="padding:.3rem .65rem;border-bottom:none;margin-left:${depth*10}px">
+      <button class="acc-head" type="button" onclick="toggleProjectFolder('${encodeURIComponent(nodeKey)}')">
+        <span class="sb-title" style="margin-bottom:0">${esc(name)} (${countNodeProjects(node)})</span>
+        <span class="acc-toggle">${open?'▾':'▸'}</span>
+      </button>
+    </div>`;
+    if(!open)return h;
+    node.projects.forEach(p=>{h+=renderProjectRow(p,depth+1);});
+    [...node.children.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([childName,childNode])=>{
+      h+=renderFolderNode(childName,childNode,[...pathParts,childName],depth+1);
+    });
+    return h;
+  }
+  let html='';
+  if(root.projects.length){
+    if(projectFolderOpenState.__ungrouped===undefined)projectFolderOpenState.__ungrouped=true;
+    const open=projectFolderOpenState.__ungrouped!==false;
+    html+=`<div class="sb-section" style="padding:.3rem .65rem;border-bottom:none">
+      <button class="acc-head" type="button" onclick="toggleProjectFolder('__ungrouped')">
+        <span class="sb-title" style="margin-bottom:0">Ungrouped (${root.projects.length})</span>
+        <span class="acc-toggle">${open?'▾':'▸'}</span>
+      </button>
+    </div>`;
+    if(open)root.projects.forEach(p=>{html+=renderProjectRow(p,1);});
+  }
+  [...root.children.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([name,node])=>{
+    html+=renderFolderNode(name,node,[name],0);
+  });
+  el.innerHTML=html||'<div class="db-empty">No saved projects</div>';
+}
+function toggleProjectFolder(folderKey){
+  const folder=folderKey==='__ungrouped'?'__ungrouped':decodeURIComponent(folderKey);
+  projectFolderOpenState[folder]=!(projectFolderOpenState[folder]!==false);
+  renderDbProjectList();
+}
+function normalizeFolderPath(v){
+  return String(v||'').replace(/\\/g,'/').split('/').map(s=>s.trim()).filter(Boolean).join('/');
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
@@ -402,13 +572,39 @@ async function loadFileFromDb(id){try{const rec=await adapter.getFile(id);if(!re
 async function deleteDbFile(id){if(!confirm('Delete this cached file?'))return;try{await adapter.deleteFile(id);toast('File deleted');await refreshDbPanels();}catch(e){toast('Delete error: '+e.message,'err');}}
 async function clearDbFiles(){if(!confirm('Clear all cached files from DB?'))return;try{await adapter.clearFiles();toast('File cache cleared');await refreshDbPanels();}catch(e){toast('Error: '+e.message,'err');}}
 async function loadProjectFromDb(id){try{const rec=await adapter.getProject(id);if(!rec){toast('Project not found','err');return;}hydrateProject(rec.payload,{replace:true,dataOnly:false});toast(`Loaded project: ${rec.name}`);}catch(e){toast('Load error: '+e.message,'err');}}
+async function renameDbProject(id){
+  try{
+    const rec=await adapter.getProject(id);
+    if(!rec){toast('Project not found','err');return;}
+    const nextName=window.prompt('New project name',rec.name||'');
+    if(nextName===null)return;
+    const name=nextName.trim();
+    if(!name){toast('Project name is empty','err');return;}
+    await adapter.saveProject({id,name,folder:(rec.folder||''),tags:rec.tags||[],payload:rec.payload});
+    toast(`Renamed: ${name}`);
+    await refreshDbPanels();
+  }catch(e){toast('Rename error: '+e.message,'err');}
+}
+async function moveDbProjectFolder(id){
+  try{
+    const rec=await adapter.getProject(id);
+    if(!rec){toast('Project not found','err');return;}
+    const nextFolder=window.prompt('Folder path (empty = Ungrouped, e.g. BatchA/Run1)',rec.folder||'');
+    if(nextFolder===null)return;
+    const folder=normalizeFolderPath(nextFolder);
+    await adapter.saveProject({id,name:rec.name,folder,tags:rec.tags||[],payload:rec.payload});
+    toast(folder?`Moved to: ${folder}`:'Moved to: Ungrouped');
+    await refreshDbPanels();
+  }catch(e){toast('Move folder error: '+e.message,'err');}
+}
 async function deleteDbProject(id){if(!confirm('Delete this project?'))return;try{await adapter.deleteProject(id);toast('Project deleted');await refreshDbPanels();}catch(e){toast('Delete error: '+e.message,'err');}}
 async function clearDbProjects(){if(!confirm('Clear all saved projects?'))return;try{await adapter.clearProjects();toast('Projects cleared');await refreshDbPanels();}catch(e){toast('Error: '+e.message,'err');}}
 async function confirmSaveProject(){
   const name=document.getElementById('projectNameInput').value.trim()||`Project ${getDateStamp()}`;
+  const folder=normalizeFolderPath(document.getElementById('projectFolderInput').value);
   const tags=document.getElementById('projectTagInput').value.split(',').map(t=>t.trim()).filter(Boolean);
   closeSaveModal();
-  try{const payload=serializeProject();await adapter.saveProject({name,tags,payload});toast(`Saved: ${name}`);await refreshDbPanels();}catch(e){toast('Save error: '+e.message,'err');}
+  try{const payload=serializeProject();await adapter.saveProject({name,folder,tags,payload});toast(`Saved: ${name}`);await refreshDbPanels();}catch(e){toast('Save error: '+e.message,'err');}
 }
 
 // ════════════════════════════════════════════════
@@ -501,26 +697,28 @@ function showDupModal(existing,rawText){
 
 function loadFile(file){
   const r=new FileReader();
-  r.onload=async e=>{
-    const rawText=e.target.result;
-    const existing=dbFileCache.find(f=>f.name===file.name);
-    let saveName=file.name,saveId=null;
-    if(existing){
-      const {action,rename}=await showDupModal(existing,rawText);
-      if(action==='skip'){parse(rawText,file.name);toast(`スキップ: DBは更新しませんでした`);return;}
-      else if(action==='overwrite'){saveId=existing.id;saveName=existing.name;}
-      else if(action==='rename'){saveName=rename||`${file.name}_${getDateStamp()}`;saveId=null;}
-    }
-    parse(rawText,saveName);
+  r.addEventListener('loadend',async()=>{
+    if(r.error){toast('ファイル読込失敗: '+(r.error.message||String(r.error)),'err');return;}
+    const rawText=r.result;
     try{
+      const existing=dbFileCache.find(f=>f.name===file.name);
+      let saveName=file.name,saveId=null;
+      if(existing){
+        const {action,rename}=await showDupModal(existing,rawText);
+        if(action==='skip'){parse(rawText,file.name);toast(`スキップ: DBは更新しませんでした`);return;}
+        else if(action==='overwrite'){saveId=existing.id;saveName=existing.name;}
+        else if(action==='rename'){saveName=rename||`${file.name}_${getDateStamp()}`;saveId=null;}
+      }
+      parse(rawText,saveName);
       const rowCount=countDataRows(rawText);
       const rec={name:saveName,rawText,rowCount};if(saveId)rec.id=saveId;
       await adapter.saveFile(rec);
       toast(saveId?`上書き: ${saveName}`:`キャッシュ: ${saveName}`);
       await refreshDbPanels();
-    }catch(err){toast('DB cache error: '+err.message,'err');}
-  };
-  r.readAsText(file,'UTF-8');
+    }catch(err){console.error(err);toast('DB cache error: '+err.message,'err');}
+  });
+  try{r.readAsText(file,'UTF-8');}
+  catch(e){toast('読込開始失敗: '+e.message,'err');}
 }
 function countDataRows(txt){
   const lines=txt.split('\n');let start=-1;
@@ -625,8 +823,9 @@ function getSegPts(f,s,step=3){
 function defaultOuterLabel(f,s){return `${f.name.replace(/\.[^.]+$/,'')} / Step${s.num}`;}
 function defaultOuterColor(f,s){return STYPE_COLOR[s.type]||f.color;}
 function getOuterSegPts(f,s){
-  const xShift=isFinite(s.outerXOffset)?s.outerXOffset:0;
-  const yShift=isFinite(s.outerOffset)?s.outerOffset:0;
+  const ignoreOffsets=(outerYAxis==='temp'&&outerShowAllTempSegments);
+  const xShift=ignoreOffsets?0:(isFinite(s.outerXOffset)?s.outerXOffset:0);
+  const yShift=ignoreOffsets?0:(isFinite(s.outerOffset)?s.outerOffset:0);
   const yGain=(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1;
   return f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>{
     const rawX=outerXAxis==='temp'?r.temp:r.time;
@@ -657,10 +856,11 @@ function renderFileOuters(){
         <div class="chart-title">${esc(f.name)}</div>
         <button class="btn" onclick="exportFileChart(${f.id},'png')">PNG</button>
         <button class="btn" onclick="exportFileChart(${f.id},'pdf')">PDF</button>
+        <button class="btn" onclick="toggleFileChartBody(${f.id})">${f.chartOpen===false?'Expand':'Collapse'}</button>
         <button class="btn" onclick="toggleFileSidebar(${f.id})">${f.sidebarOpen?'Hide':'Show'} Sidebar</button>
         <button class="btn warn" onclick="removeFile(${f.id})">Remove</button>
       </div>
-      <div class="chart-body ${f.sidebarOpen?'':'sidebar-hidden'}">
+      <div class="chart-body ${f.sidebarOpen?'':'sidebar-hidden'}" style="${f.chartOpen===false?'display:none':''}">
         <div class="sidebar-wrap">${renderFileSidebarHtml(f)}</div>
         <div class="chart-pane" style="height:${paneHeight}px">
           <div class="pane-title">${axisLabelY(f.dscY)} vs ${axisLabelX(f.dscX)}</div>
@@ -668,15 +868,22 @@ function renderFileOuters(){
         </div>
       </div>`;
     grid.appendChild(outer);
-    renderFileChart(f);
+    if(f.chartOpen!==false)renderFileChart(f);
+    else if(f.chart){f.chart.destroy();f.chart=null;}
   });
 }
 
 function renderFileSidebarHtml(f){
+  if(!fileAcc[f.id])fileAcc[f.id]={controls:true,span:true,segments:true};
+  const acc=fileAcc[f.id];
   const selectedCount=f.segments.filter(s=>s.selectedOuter).length;
   const yIsTemp=f.dscY==='temp';
   return `
     <div class="sidebar-card">
+      <button type="button" class="acc-head" onclick="toggleFileAcc(${f.id},'controls')">
+        <span class="lbl">Mode / Axis / Zoom / Scale</span><span class="acc-toggle">${acc.controls?'▾':'▸'}</span>
+      </button>
+      <div class="acc-body ${acc.controls?'':'closed'}">
       <div class="lbl">Mode</div>
       <div class="btn-row">
         <button class="btn ${f.mode==='zoom'?'on':''}" onclick="setFileMode(${f.id},'zoom')">Zoom</button>
@@ -700,8 +907,13 @@ function renderFileSidebarHtml(f){
       </div>
       <div class="lbl">Scale</div>
       <div class="mini">Pane Height (%)</div><input class="num" type="number" value="${f.chartScale}" min="60" max="200" onchange="setFileScale(${f.id},this.value)">
+      </div>
     </div>
     <div class="sidebar-card">
+      <button type="button" class="acc-head" onclick="toggleFileAcc(${f.id},'span')">
+        <span class="lbl">Display Span</span><span class="acc-toggle">${acc.span?'▾':'▸'}</span>
+      </button>
+      <div class="acc-body ${acc.span?'':'closed'}">
       <div class="lbl">Display Span</div>
       <div class="mini" style="margin-bottom:2px">X: ${axisUnitX(f.dscX)} &nbsp;|&nbsp; Y: ${axisUnitY(f.dscY)}</div>
       <div class="seg-grid">
@@ -711,8 +923,13 @@ function renderFileSidebarHtml(f){
         <input class="num" id="fyMax-${f.id}" placeholder="y max" value="${fmt(f.view.yMax,4)}">
       </div>
       <div class="btn-row"><button class="btn" onclick="applyFileSpan(${f.id})">Apply</button></div>
+      </div>
     </div>
     <div class="sidebar-card">
+      <button type="button" class="acc-head" onclick="toggleFileAcc(${f.id},'segments')">
+        <span class="lbl">Segments (Visible / Outer / Y-Offset / Y-Gain)</span><span class="acc-toggle">${acc.segments?'▾':'▸'}</span>
+      </button>
+      <div class="acc-body ${acc.segments?'':'closed'}">
       <div class="lbl">Segments (Visible / Outer / Y-Offset / Y-Gain)</div>
       <div class="mini" style="margin-bottom:3px">${yIsTemp?'<em>Y-Gain は Temp モードでは無視されます</em>':'Y-Gain は Heat Flow にのみ適用されます'}</div>
       <div class="seg-list">
@@ -734,6 +951,7 @@ function renderFileSidebarHtml(f){
         `).join('')}
       </div>
       <div class="mini" style="margin-top:4px">Outer selected: ${selectedCount} segments</div>
+      </div>
     </div>`;
 }
 function fmt(v,d){return isFinite(v)?(+v).toFixed(d):'';}
@@ -774,7 +992,9 @@ function renderFileChart(f){
 //  FILE CONTROLS
 // ════════════════════════════════════════════════
 function findFile(fid){return files.find(f=>f.id===fid)||null;}
-function removeFile(fid){const f=findFile(fid);if(!f)return;if(f.chart)f.chart.destroy();files=files.filter(x=>x.id!==fid);renderAll();}
+function removeFile(fid){const f=findFile(fid);if(!f)return;if(f.chart)f.chart.destroy();files=files.filter(x=>x.id!==fid);delete fileAcc[fid];renderAll();}
+function toggleFileChartBody(fid){const f=findFile(fid);if(!f)return;f.chartOpen=f.chartOpen===false?true:false;renderFileOuters();}
+function toggleFileAcc(fid,key){if(!fileAcc[fid])fileAcc[fid]={controls:true,span:true,segments:true};fileAcc[fid][key]=!fileAcc[fid][key];renderFileOuters();}
 function toggleFileSidebar(fid){const f=findFile(fid);if(!f)return;f.sidebarOpen=!f.sidebarOpen;renderFileOuters();}
 function setFileMode(fid,mode){const f=findFile(fid);if(!f)return;f.mode=mode==='lock'?'lock':'zoom';renderFileOuters();}
 function setFileX(fid,mode){const f=findFile(fid);if(!f)return;const next=mode==='time'?'time':'temp';if(f.dscX===next)return;f.dscX=next;f.view={xMin:null,xMax:null,yMin:null,yMax:null};renderFileOuters();}
@@ -806,8 +1026,16 @@ function applyFileSpan(fid){
 //  OUTER (COMBINED) CHART
 // ════════════════════════════════════════════════
 function selectedOuterSegs(){const arr=[];files.forEach(f=>f.segments.filter(s=>s.selectedOuter).forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));return arr;}
+function outerSegsForChart(){
+  if(outerYAxis==='temp'&&outerShowAllTempSegments){
+    const arr=[];
+    files.forEach(f=>f.segments.forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));
+    return arr;
+  }
+  return selectedOuterSegs();
+}
 function renderOuterChart(){
-  const wrap=document.getElementById('outerWrap');const sel=selectedOuterSegs();
+  const wrap=document.getElementById('outerWrap');const sel=outerSegsForChart();
   if(!sel.length){if(outerChart){outerChart.destroy();outerChart=null;}wrap.innerHTML='<div class="outer-placeholder">Enable "Outer" on any segment to show it here.</div>';return;}
   wrap.innerHTML=`
     <div class="chart-outer">
@@ -815,9 +1043,10 @@ function renderOuterChart(){
         <div class="chart-title">Outer Chart (${sel.length} segments)</div>
         <button class="btn" onclick="exportOuterChart('png')">PNG</button>
         <button class="btn" onclick="exportOuterChart('pdf')">PDF</button>
+        <button class="btn" onclick="toggleOuterChartBody()">${outerChartOpen?'Collapse':'Expand'}</button>
         <button class="btn" onclick="toggleOuterSidebar()">${outerSidebarOpen?'Hide':'Show'} Sidebar</button>
       </div>
-      <div class="chart-body ${outerSidebarOpen?'':'sidebar-hidden'}">
+      <div class="chart-body ${outerSidebarOpen?'':'sidebar-hidden'}" style="${outerChartOpen?'':'display:none'}">
         <div class="sidebar-wrap">${renderOuterSidebarHtml(sel)}</div>
         <div class="chart-pane" style="height:${outerHeight}px">
           <div class="pane-title">${axisLabelY(outerYAxis)} vs ${axisLabelX(outerXAxis)}</div>
@@ -825,8 +1054,18 @@ function renderOuterChart(){
         </div>
       </div>
     </div>`;
+  if(!outerChartOpen){
+    if(outerChart){outerChart.destroy();outerChart=null;}
+    return;
+  }
   const datasets=[];const bounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
-  sel.forEach(({f,s})=>{const pts=getOuterSegPts(f,s);pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});datasets.push({label:(s.outerLabel||defaultOuterLabel(f,s)),data:pts,borderColor:(s.outerColor||defaultOuterColor(f,s)),borderWidth:1.8,pointRadius:0,tension:0.1,fill:false});});
+  sel.forEach(({f,s})=>{
+    const pts=getOuterSegPts(f,s);
+    pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});
+    const unifiedTempColor=(outerYAxis==='temp'&&outerShowAllTempSegments)?f.color:null;
+    const lineColor=unifiedTempColor||(s.outerColor||defaultOuterColor(f,s));
+    datasets.push({label:(s.outerLabel||defaultOuterLabel(f,s)),data:pts,borderColor:lineColor,borderWidth:1.8,pointRadius:0,tension:0.1,fill:false});
+  });
   if(!isFinite(bounds.xMin))Object.assign(bounds,{xMin:0,xMax:1,yMin:0,yMax:1});
   outerBounds=bounds;if(outerChart)outerChart.destroy();
   const xUnit=axisUnitX(outerXAxis),yUnit=axisUnitY(outerYAxis);
@@ -851,8 +1090,17 @@ function renderOuterChart(){
 }
 function renderOuterSidebarHtml(sel){
   const yIsTemp=outerYAxis==='temp';
+  const tempAllOn=yIsTemp&&outerShowAllTempSegments;
+  const segTitle=tempAllOn?'Displayed Segments (All)':`Selected Segments`;
+  const segHint=tempAllOn
+    ? '<em>Temp全表示モード: 全セグメントを表示し、同一ファイル内は同色で描画します</em>'
+    : (yIsTemp?'<em>Outer Y-Gain は Temp モードでは無視されます</em>':'Outer Y-Gain は Heat Flow にのみ適用されます');
   return `
     <div class="sidebar-card">
+      <button type="button" class="acc-head" onclick="toggleOuterAcc('axes')">
+        <span class="lbl">X axis / Y axis / Zoom / Size</span><span class="acc-toggle">${outerAcc.axes?'▾':'▸'}</span>
+      </button>
+      <div class="acc-body ${outerAcc.axes?'':'closed'}">
       <div class="lbl">X axis / Y axis / Zoom / Size</div>
       <div class="btn-row">
         <button class="btn ${outerXAxis==='temp'?'on':''}" onclick="setOuterX('temp')">X: Temp</button>
@@ -861,6 +1109,9 @@ function renderOuterSidebarHtml(sel){
       <div class="btn-row">
         <button class="btn ${outerYAxis==='heatflow'?'on':''}" onclick="setOuterY('heatflow')">Y: Heat Flow</button>
         <button class="btn ${outerYAxis==='temp'?'on':''}" onclick="setOuterY('temp')">Y: Sample Temp</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn ${(tempAllOn)?'on':''}" onclick="toggleOuterAllTempSegments()" ${yIsTemp?'':'disabled'}>Temp: Show All Segments</button>
       </div>
       <div class="btn-row">
         <button class="btn" onclick="zoomOuter('x',0.85)">X+</button><button class="btn" onclick="zoomOuter('x',1.18)">X-</button>
@@ -877,10 +1128,15 @@ function renderOuterSidebarHtml(sel){
         <input class="num" id="oyMax" placeholder="y max" value="${fmt(outerView.yMax,4)}">
       </div>
       <div class="btn-row"><button class="btn" onclick="applyOuterSpan()">Apply</button></div>
+      </div>
     </div>
     <div class="sidebar-card">
-      <div class="lbl">Selected Segments</div>
-      <div class="mini" style="margin-bottom:3px">${yIsTemp?'<em>Outer Y-Gain は Temp モードでは無視されます</em>':'Outer Y-Gain は Heat Flow にのみ適用されます'}</div>
+      <button type="button" class="acc-head" onclick="toggleOuterAcc('segments')">
+        <span class="lbl">${segTitle}</span><span class="acc-toggle">${outerAcc.segments?'▾':'▸'}</span>
+      </button>
+      <div class="acc-body ${outerAcc.segments?'':'closed'}">
+      <div class="lbl">${segTitle}</div>
+      <div class="mini" style="margin-bottom:3px">${segHint}</div>
       <div class="seg-list" style="max-height:290px">
       ${sel.map(({f,s})=>`
         <div class="seg-item">
@@ -890,7 +1146,7 @@ function renderOuterSidebarHtml(sel){
             <div class="mini">Label</div>
             <input class="num" type="text" value="${(s.outerLabel||'').replace(/"/g,'&quot;')}" placeholder="${esc(defaultOuterLabel(f,s))}" onchange="setOuterSegLabel(${f.id},${s.idx},this.value)">
             <div class="mini" style="margin-top:4px">Color</div>
-            <input class="num" type="color" value="${s.outerColor||defaultOuterColor(f,s)}" onchange="setOuterSegColor(${f.id},${s.idx},this.value)">
+            <input class="num" type="color" value="${tempAllOn?f.color:(s.outerColor||defaultOuterColor(f,s))}" onchange="setOuterSegColor(${f.id},${s.idx},this.value)" ${tempAllOn?'disabled':''}>
             <div class="mini" style="margin-top:4px">Offset (X / Y)</div>
             <div class="seg-grid">
               <input class="num" type="number" step="0.05" value="${s.outerXOffset||0}" onchange="setOuterSegXOffset(${f.id},${s.idx},this.value)">
@@ -904,11 +1160,15 @@ function renderOuterSidebarHtml(sel){
         </div>
       `).join('')}
       </div>
+      </div>
     </div>`;
 }
+function toggleOuterAcc(key){outerAcc[key]=!outerAcc[key];renderOuterChart();}
 function toggleOuterSidebar(){outerSidebarOpen=!outerSidebarOpen;renderOuterChart();}
+function toggleOuterChartBody(){outerChartOpen=!outerChartOpen;renderOuterChart();}
 function setOuterX(mode){const next=mode==='temp'?'temp':'time';if(outerXAxis===next)return;outerXAxis=next;outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
 function setOuterY(mode){const next=mode==='temp'?'temp':'heatflow';if(outerYAxis===next)return;outerYAxis=next;outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
+function toggleOuterAllTempSegments(){if(outerYAxis!=='temp')return;outerShowAllTempSegments=!outerShowAllTempSegments;renderOuterChart();}
 function setOuterHeight(v){const n=parseInt(v,10);outerHeight=clamp(isNaN(n)?400:n,260,1000);renderOuterChart();}
 function resetOuterView(){outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
 function applyOuterSpan(){
@@ -938,10 +1198,10 @@ function serializeProject(){
     kind:'heatflow_tempdep_timedep',
     savedAt:new Date().toISOString(),
     nextFid,
-    outer:{outerSidebarOpen,outerXAxis,outerYAxis,outerHeight,outerView},
+    outer:{outerSidebarOpen,outerChartOpen,outerXAxis,outerYAxis,outerShowAllTempSegments,outerHeight,outerView},
     files:files.map(f=>({
       id:f.id,name:f.name,color:f.color,meta:f.meta,data:f.data,
-      chartScale:f.chartScale,sidebarOpen:f.sidebarOpen,mode:f.mode,
+      chartScale:f.chartScale,sidebarOpen:f.sidebarOpen,chartOpen:f.chartOpen!==false,mode:f.mode,
       dscX:f.dscX,dscY:f.dscY,view:f.view,
       segments:f.segments.map(s=>({...s}))
     }))
@@ -953,8 +1213,10 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
   if(replace){files.forEach(f=>{if(f.chart)f.chart.destroy();});files=[];}
   if(!dataOnly){
     outerSidebarOpen=payload.outer?.outerSidebarOpen??outerSidebarOpen;
+    outerChartOpen=payload.outer?.outerChartOpen!==false;
     outerXAxis=payload.outer?.outerXAxis==='temp'?'temp':'time';
     outerYAxis=payload.outer?.outerYAxis==='temp'?'temp':'heatflow';
+    outerShowAllTempSegments=!!payload.outer?.outerShowAllTempSegments;
     outerHeight=clamp(parseInt(payload.outer?.outerHeight,10)||outerHeight,260,1000);
     outerView=payload.outer?.outerView||{xMin:null,xMax:null,yMin:null,yMax:null};
   }
@@ -978,6 +1240,7 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
       color:src.color||FC[(files.length)%FC.length],
       meta:src.meta||{},data:rows,segments,chart:null,
       sidebarOpen:src.sidebarOpen!==false,
+      chartOpen:src.chartOpen!==false,
       mode:src.mode==='lock'?'lock':'zoom',
       dscX:src.dscX==='temp'?'temp':'time',
       dscY:src.dscY==='temp'?'temp':'heatflow',
@@ -989,9 +1252,25 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
   renderAll();
 }
 function exportProjectJson(){downloadText(`dsc_hf_xy_${getDateStamp()}.json`,JSON.stringify(serializeProject()));}
-function importProjectJson(file){const r=new FileReader();r.onload=e=>{try{hydrateProject(JSON.parse(e.target.result),{replace:true,dataOnly:false});toast('Project imported');}catch(_e){alert('Invalid project JSON');}};r.readAsText(file,'UTF-8');}
+function importProjectJson(file){
+  const r=new FileReader();
+  r.addEventListener('loadend',()=>{
+    if(r.error){toast('JSON 読込失敗: '+(r.error.message||''),'err');return;}
+    try{hydrateProject(JSON.parse(r.result),{replace:true,dataOnly:false});toast('Project imported');}
+    catch(_e){alert('Invalid project JSON');}
+  });
+  try{r.readAsText(file,'UTF-8');}catch(e){toast('読込失敗: '+e.message,'err');}
+}
 function exportDataJson(){downloadText(`dsc_hf_xy_data_${getDateStamp()}.json`,JSON.stringify(serializeDataOnly()));}
-function importDataJson(file){const r=new FileReader();r.onload=e=>{try{hydrateProject(JSON.parse(e.target.result),{replace:false,dataOnly:true});toast('Data imported');}catch(_e){alert('Invalid data JSON');}};r.readAsText(file,'UTF-8');}
+function importDataJson(file){
+  const r=new FileReader();
+  r.addEventListener('loadend',()=>{
+    if(r.error){toast('JSON 読込失敗: '+(r.error.message||''),'err');return;}
+    try{hydrateProject(JSON.parse(r.result),{replace:false,dataOnly:true});toast('Data imported');}
+    catch(_e){alert('Invalid data JSON');}
+  });
+  try{r.readAsText(file,'UTF-8');}catch(e){toast('読込失敗: '+e.message,'err');}
+}
 
 // ════════════════════════════════════════════════
 //  THEME
@@ -1024,9 +1303,10 @@ async function exportFullDb(){
 }
 async function importFullDb(file){
   const r=new FileReader();
-  r.onload=async e=>{
+  r.addEventListener('loadend',async()=>{
+    if(r.error){toast('DB dump 読込失敗: '+(r.error.message||''),'err');return;}
     try{
-      const payload=JSON.parse(e.target.result);
+      const payload=JSON.parse(r.result);
       if(!Array.isArray(payload.files)||!Array.isArray(payload.projects))throw new Error('Invalid DB dump format');
       const fc=payload.files.length,pc=payload.projects.length;
       const exportedAt=payload.exportedAt?new Date(payload.exportedAt).toLocaleString():'不明';
@@ -1052,21 +1332,23 @@ async function importFullDb(file){
       const skipMsg=(fSkipped+pSkipped)>0?` (${fSkipped+pSkipped} skipped)`:'';
       toast(`Imported: ${fImported} files, ${pImported} projects${skipMsg}`);
     }catch(err){toast('Import error: '+err.message,'err');}
-  };
-  r.readAsText(file,'UTF-8');
+  });
+  try{r.readAsText(file,'UTF-8');}catch(e){toast('読込失敗: '+e.message,'err');}
 }
 
 // ════════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════════
 (async()=>{
+  runEnvironmentChecks();
   document.getElementById('adapterBadge').className='adapter-badge idb';
   document.getElementById('dbImportIn').addEventListener('change',e=>{
     const file=e.target.files?.[0];if(file)importFullDb(file);e.target.value='';
   });
   applyTheme();
-  await refreshDbPanels();
-  renderOuterChart();
+  if(typeof indexedDB==='undefined')toast('IndexedDB 非対応: DB キャッシュは使えません','err');
+  try{await refreshDbPanels();}catch(e){console.error(e);toast('DB init: '+(e.message||e),'err');}
+  try{renderOuterChart();}catch(e){console.error(e);toast('Chart init: '+(e.message||e),'err');}
 })();
 </script>
 </body>
