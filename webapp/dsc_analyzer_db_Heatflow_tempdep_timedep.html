@@ -119,7 +119,20 @@ input[type=file]{display:none}
 .chart-body{display:grid;grid-template-columns:280px 1fr;gap:10px;padding:.75rem}
 .chart-body.sidebar-hidden{grid-template-columns:1fr}
 .chart-body.sidebar-hidden .sidebar-wrap{display:none}
+.outer-chart-body{display:flex;flex-direction:column;gap:10px;padding:.75rem}
+.outer-chart-body.sidebar-hidden .outer-controls-row{display:none}
+.outer-controls-row{display:grid;grid-template-columns:minmax(240px,1fr) minmax(300px,2fr);gap:10px;align-items:start;width:100%}
 .sidebar-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.seg-table-wrap{max-height:290px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg2)}
+.seg-table{width:100%;border-collapse:collapse;font-size:11px}
+.seg-table th,.seg-table td{padding:4px 5px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}
+.seg-table th{font-size:10px;color:var(--text3);font-weight:500;white-space:nowrap}
+.seg-table tr:last-child td{border-bottom:none}
+.seg-table .seg-meta{font-size:10px;color:var(--text3);line-height:1.25;margin-bottom:2px}
+.num-compact{width:5.5ch;min-width:5.5ch;max-width:5.5ch;padding:2px 3px;text-align:right}
+.num-offset{width:9.5ch;min-width:9.5ch;max-width:9.5ch;padding:2px 4px;text-align:right}
+.num-label{width:100%;min-width:6rem;font-size:11px;padding:2px 5px}
+input[type=color].color-compact{width:2rem;height:1.4rem;padding:0;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer}
 .sidebar-card{border:1px solid var(--border);border-radius:6px;padding:7px;background:var(--bg3)}
 .acc-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;border:none;color:inherit;padding:0;cursor:pointer}
 .acc-head .lbl{margin:0}
@@ -162,7 +175,7 @@ canvas{width:100%;height:100%}
 .adapter-badge.idb{border-color:#3a4a2a;color:#7db85a}
 .adapter-badge.supa{border-color:#2a3a5a;color:#5a9ae8}
 
-@media (max-width:980px){.chart-body{grid-template-columns:1fr}}
+@media (max-width:980px){.chart-body{grid-template-columns:1fr}.outer-controls-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -401,7 +414,9 @@ let files=[]; let nextFid=1;
 let outerChart=null; let outerSidebarOpen=true;
 let outerChartOpen=true;
 let outerXAxis='time'; let outerYAxis='heatflow'; let outerHeight=400;
-let outerShowAllTempSegments=false;
+let outerShowAllSegments=false;
+let outerApplyOffsets=true;
+let outerShowLegend=true;
 let outerView={xMin:null,xMax:null,yMin:null,yMax:null};
 let outerBounds={xMin:0,xMax:1,yMin:0,yMax:1};
 let outerAcc={axes:true,segments:true};
@@ -823,9 +838,9 @@ function getSegPts(f,s,step=3){
 function defaultOuterLabel(f,s){return `${f.name.replace(/\.[^.]+$/,'')} / Step${s.num}`;}
 function defaultOuterColor(f,s){return STYPE_COLOR[s.type]||f.color;}
 function getOuterSegPts(f,s){
-  const ignoreOffsets=(outerYAxis==='temp'&&outerShowAllTempSegments);
-  const xShift=ignoreOffsets?0:(isFinite(s.outerXOffset)?s.outerXOffset:0);
-  const yShift=ignoreOffsets?0:(isFinite(s.outerOffset)?s.outerOffset:0);
+  const applyOffsets=outerApplyOffsets;
+  const xShift=applyOffsets&&(isFinite(s.outerXOffset))?s.outerXOffset:0;
+  const yShift=applyOffsets&&(isFinite(s.outerOffset))?s.outerOffset:0;
   const yGain=(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1;
   return f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>{
     const rawX=outerXAxis==='temp'?r.temp:r.time;
@@ -1027,7 +1042,7 @@ function applyFileSpan(fid){
 // ════════════════════════════════════════════════
 function selectedOuterSegs(){const arr=[];files.forEach(f=>f.segments.filter(s=>s.selectedOuter).forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));return arr;}
 function outerSegsForChart(){
-  if(outerYAxis==='temp'&&outerShowAllTempSegments){
+  if(outerShowAllSegments){
     const arr=[];
     files.forEach(f=>f.segments.forEach(s=>arr.push({f,s,key:`${f.id}_${s.idx}`})));
     return arr;
@@ -1036,7 +1051,7 @@ function outerSegsForChart(){
 }
 function renderOuterChart(){
   const wrap=document.getElementById('outerWrap');const sel=outerSegsForChart();
-  if(!sel.length){if(outerChart){outerChart.destroy();outerChart=null;}wrap.innerHTML='<div class="outer-placeholder">Enable "Outer" on any segment to show it here.</div>';return;}
+  if(!sel.length){if(outerChart){outerChart.destroy();outerChart=null;}wrap.innerHTML=`<div class="outer-placeholder">${outerShowAllSegments?'No segments available in loaded files.':'Enable "Outer" on any segment to show it here.'}</div>`;return;}
   wrap.innerHTML=`
     <div class="chart-outer">
       <div class="chart-head">
@@ -1046,8 +1061,8 @@ function renderOuterChart(){
         <button class="btn" onclick="toggleOuterChartBody()">${outerChartOpen?'Collapse':'Expand'}</button>
         <button class="btn" onclick="toggleOuterSidebar()">${outerSidebarOpen?'Hide':'Show'} Sidebar</button>
       </div>
-      <div class="chart-body ${outerSidebarOpen?'':'sidebar-hidden'}" style="${outerChartOpen?'':'display:none'}">
-        <div class="sidebar-wrap">${renderOuterSidebarHtml(sel)}</div>
+      <div class="chart-body outer-chart-body ${outerSidebarOpen?'':'sidebar-hidden'}" style="${outerChartOpen?'':'display:none'}">
+        <div class="outer-controls-row">${renderOuterSidebarHtml(sel)}</div>
         <div class="chart-pane" style="height:${outerHeight}px">
           <div class="pane-title">${axisLabelY(outerYAxis)} vs ${axisLabelX(outerXAxis)}</div>
           <div class="canvas-wrap"><div class="zoom-box" id="outerZoomBox"></div><canvas id="outerChartCvs"></canvas></div>
@@ -1062,8 +1077,8 @@ function renderOuterChart(){
   sel.forEach(({f,s})=>{
     const pts=getOuterSegPts(f,s);
     pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});
-    const unifiedTempColor=(outerYAxis==='temp'&&outerShowAllTempSegments)?f.color:null;
-    const lineColor=unifiedTempColor||(s.outerColor||defaultOuterColor(f,s));
+    const unifyFileColor=outerShowAllSegments&&outerYAxis==='temp';
+    const lineColor=unifyFileColor?f.color:(s.outerColor||defaultOuterColor(f,s));
     datasets.push({label:(s.outerLabel||defaultOuterLabel(f,s)),data:pts,borderColor:lineColor,borderWidth:1.8,pointRadius:0,tension:0.1,fill:false});
   });
   if(!isFinite(bounds.xMin))Object.assign(bounds,{xMin:0,xMax:1,yMin:0,yMax:1});
@@ -1076,7 +1091,7 @@ function renderOuterChart(){
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'nearest',intersect:false},
       plugins:{
-        legend:{display:true,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'}}},
+        legend:{display:outerShowLegend,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'}}},
         tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: x=${(+ctx.parsed.x).toFixed(3)} ${xUnit}, y=${(+ctx.parsed.y).toFixed(4)} ${yUnit}`}}
       },
       scales:{
@@ -1090,10 +1105,11 @@ function renderOuterChart(){
 }
 function renderOuterSidebarHtml(sel){
   const yIsTemp=outerYAxis==='temp';
-  const tempAllOn=yIsTemp&&outerShowAllTempSegments;
-  const segTitle=tempAllOn?'Displayed Segments (All)':`Selected Segments`;
-  const segHint=tempAllOn
-    ? '<em>Temp全表示モード: 全セグメントを表示し、同一ファイル内は同色で描画します</em>'
+  const showAllOn=outerShowAllSegments;
+  const unifyFileColor=showAllOn&&yIsTemp;
+  const segTitle=showAllOn?'Displayed Segments (All)':'Selected Segments';
+  const segHint=showAllOn
+    ? (yIsTemp?'<em>全セグメントを表示し、同一ファイル内は同色で描画します</em>':'<em>全セグメントを表示します</em>')
     : (yIsTemp?'<em>Outer Y-Gain は Temp モードでは無視されます</em>':'Outer Y-Gain は Heat Flow にのみ適用されます');
   return `
     <div class="sidebar-card">
@@ -1111,7 +1127,12 @@ function renderOuterSidebarHtml(sel){
         <button class="btn ${outerYAxis==='temp'?'on':''}" onclick="setOuterY('temp')">Y: Sample Temp</button>
       </div>
       <div class="btn-row">
-        <button class="btn ${(tempAllOn)?'on':''}" onclick="toggleOuterAllTempSegments()" ${yIsTemp?'':'disabled'}>Temp: Show All Segments</button>
+        <button class="btn ${!showAllOn?'on':''}" onclick="setOuterSegScope('selected')">Selected Segments</button>
+        <button class="btn ${showAllOn?'on':''}" onclick="setOuterSegScope('all')">All Segments</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn ${outerApplyOffsets?'on':''}" onclick="toggleOuterApplyOffsets()">Apply Offsets</button>
+        <button class="btn ${outerShowLegend?'on':''}" onclick="toggleOuterLegend()">Legend</button>
       </div>
       <div class="btn-row">
         <button class="btn" onclick="zoomOuter('x',0.85)">X+</button><button class="btn" onclick="zoomOuter('x',1.18)">X-</button>
@@ -1137,29 +1158,34 @@ function renderOuterSidebarHtml(sel){
       <div class="acc-body ${outerAcc.segments?'':'closed'}">
       <div class="lbl">${segTitle}</div>
       <div class="mini" style="margin-bottom:3px">${segHint}</div>
-      <div class="seg-list" style="max-height:290px">
+      <div class="seg-table-wrap">
+      <table class="seg-table">
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Color</th>
+            <th>Offset X</th>
+            <th>Offset Y</th>
+            <th>Gain</th>
+          </tr>
+        </thead>
+        <tbody>
       ${sel.map(({f,s})=>`
-        <div class="seg-item">
-          <div class="seg-text">
-            <div><strong>${esc(f.name.replace(/\.[^.]+$/,''))}</strong> / Step ${s.num}</div>
-            <div class="mini">${s.type}</div>
-            <div class="mini">Label</div>
-            <input class="num" type="text" value="${(s.outerLabel||'').replace(/"/g,'&quot;')}" placeholder="${esc(defaultOuterLabel(f,s))}" onchange="setOuterSegLabel(${f.id},${s.idx},this.value)">
-            <div class="mini" style="margin-top:4px">Color</div>
-            <input class="num" type="color" value="${tempAllOn?f.color:(s.outerColor||defaultOuterColor(f,s))}" onchange="setOuterSegColor(${f.id},${s.idx},this.value)" ${tempAllOn?'disabled':''}>
-            <div class="mini" style="margin-top:4px">Offset (X / Y)</div>
-            <div class="seg-grid">
-              <input class="num" type="number" step="0.05" value="${s.outerXOffset||0}" onchange="setOuterSegXOffset(${f.id},${s.idx},this.value)">
-              <input class="num" type="number" step="0.05" value="${s.outerOffset}" onchange="setOuterSegOffset(${f.id},${s.idx},this.value)">
-            </div>
-            <div class="mini" style="margin-top:4px">Gain (Y, HeatFlow only)</div>
-            <div class="seg-grid">
-              <input class="num" type="number" step="0.05" min="0.05" value="${s.outerGain}" onchange="setOuterSegGain(${f.id},${s.idx},this.value)" ${yIsTemp?'disabled':''}>
-            </div>
-          </div>
-        </div>
+          <tr title="${esc(f.name.replace(/\.[^.]+$/,''))} / Step ${s.num} (${s.type})">
+            <td>
+              <div class="seg-meta">${esc(f.name.replace(/\.[^.]+$/,''))} / Step ${s.num}</div>
+              <input class="num num-label" type="text" id="oseg-label-${f.id}-${s.idx}" value="${(s.outerLabel||'').replace(/"/g,'&quot;')}" placeholder="${esc(defaultOuterLabel(f,s))}">
+            </td>
+            <td><input class="color-compact" type="color" id="oseg-color-${f.id}-${s.idx}" value="${unifyFileColor?f.color:(s.outerColor||defaultOuterColor(f,s))}" ${unifyFileColor?'disabled':''}></td>
+            <td><input class="num num-offset" type="number" step="0.05" id="oseg-xoff-${f.id}-${s.idx}" value="${s.outerXOffset||0}"></td>
+            <td><input class="num num-offset" type="number" step="0.05" id="oseg-yoff-${f.id}-${s.idx}" value="${s.outerOffset}"></td>
+            <td><input class="num num-compact" type="number" step="0.05" min="0.05" id="oseg-gain-${f.id}-${s.idx}" value="${s.outerGain}" ${yIsTemp?'disabled':''}></td>
+          </tr>
       `).join('')}
+        </tbody>
+      </table>
       </div>
+      <div class="btn-row" style="margin-top:6px"><button class="btn" onclick="applyOuterSegments()">Apply</button></div>
       </div>
     </div>`;
 }
@@ -1168,12 +1194,31 @@ function toggleOuterSidebar(){outerSidebarOpen=!outerSidebarOpen;renderOuterChar
 function toggleOuterChartBody(){outerChartOpen=!outerChartOpen;renderOuterChart();}
 function setOuterX(mode){const next=mode==='temp'?'temp':'time';if(outerXAxis===next)return;outerXAxis=next;outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
 function setOuterY(mode){const next=mode==='temp'?'temp':'heatflow';if(outerYAxis===next)return;outerYAxis=next;outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
-function toggleOuterAllTempSegments(){if(outerYAxis!=='temp')return;outerShowAllTempSegments=!outerShowAllTempSegments;renderOuterChart();}
+function setOuterSegScope(mode){const all=mode==='all';if(outerShowAllSegments===all)return;outerShowAllSegments=all;renderOuterChart();}
+function toggleOuterApplyOffsets(){outerApplyOffsets=!outerApplyOffsets;renderOuterChart();}
+function toggleOuterLegend(){outerShowLegend=!outerShowLegend;renderOuterChart();}
 function setOuterHeight(v){const n=parseInt(v,10);outerHeight=clamp(isNaN(n)?400:n,260,1000);renderOuterChart();}
 function resetOuterView(){outerView={xMin:null,xMax:null,yMin:null,yMax:null};renderOuterChart();}
 function applyOuterSpan(){
   const xMin=parseFloat(document.getElementById('oxMin').value),xMax=parseFloat(document.getElementById('oxMax').value),yMin=parseFloat(document.getElementById('oyMin').value),yMax=parseFloat(document.getElementById('oyMax').value);
   outerView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};renderOuterChart();
+}
+function applyOuterSegments(){
+  outerSegsForChart().forEach(({f,s})=>{
+    const labelEl=document.getElementById(`oseg-label-${f.id}-${s.idx}`);
+    const colorEl=document.getElementById(`oseg-color-${f.id}-${s.idx}`);
+    const xOffEl=document.getElementById(`oseg-xoff-${f.id}-${s.idx}`);
+    const yOffEl=document.getElementById(`oseg-yoff-${f.id}-${s.idx}`);
+    const gainEl=document.getElementById(`oseg-gain-${f.id}-${s.idx}`);
+    assignOuterSegFields(f.id,s.idx,{
+      label:labelEl?labelEl.value:undefined,
+      color:colorEl&&!colorEl.disabled?colorEl.value:undefined,
+      xOffset:xOffEl?xOffEl.value:undefined,
+      offset:yOffEl?yOffEl.value:undefined,
+      gain:gainEl&&!gainEl.disabled?gainEl.value:undefined
+    });
+  });
+  renderOuterChart();
 }
 function zoomOuter(axis,factor){
   if(!outerChart)return;const sx=outerChart.scales.x,sy=outerChart.scales.y;
@@ -1181,11 +1226,14 @@ function zoomOuter(axis,factor){
   else{const c=(sy.min+sy.max)/2,curMin=outerView.yMin??sy.min,curMax=outerView.yMax??sy.max,next=zoomRange(curMin,curMax,c,factor,outerBounds.yMin,outerBounds.yMax);outerView.yMin=next[0];outerView.yMax=next[1];}
   renderOuterChart();
 }
-function setOuterSegXOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerXOffset=isNaN(n)?0:n;renderOuterChart();}
-function setOuterSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerOffset=isNaN(n)?0:n;renderOuterChart();}
-function setOuterSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.outerGain=(isNaN(n)||n<=0)?1:n;renderOuterChart();}
-function setOuterSegLabel(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerLabel=(v||'').trim();renderOuterChart();}
-function setOuterSegColor(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.outerColor=typeof v==='string'?v:'';renderOuterChart();}
+function assignOuterSegFields(fid,idx,{label,color,xOffset,offset,gain}){
+  const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;
+  if(label!==undefined)s.outerLabel=(label||'').trim();
+  if(color!==undefined)s.outerColor=typeof color==='string'?color:'';
+  if(xOffset!==undefined){const n=parseFloat(xOffset);s.outerXOffset=isNaN(n)?0:n;}
+  if(offset!==undefined){const n=parseFloat(offset);s.outerOffset=isNaN(n)?0:n;}
+  if(gain!==undefined){const n=parseFloat(gain);s.outerGain=(isNaN(n)||n<=0)?1:n;}
+}
 function exportFileChart(fid,format){const f=findFile(fid);if(!f)return;const tag=`${f.dscY}_vs_${f.dscX}`;exportChartImage(f.chart,`${f.name.replace(/\.[^.]+$/,'')}_${tag}_${getDateStamp()}`,format);}
 function exportOuterChart(format){if(!outerChart){alert('Outer chart not ready');return;}exportChartImage(outerChart,`outer_${outerYAxis}_vs_${outerXAxis}_${getDateStamp()}`,format);}
 
@@ -1198,7 +1246,7 @@ function serializeProject(){
     kind:'heatflow_tempdep_timedep',
     savedAt:new Date().toISOString(),
     nextFid,
-    outer:{outerSidebarOpen,outerChartOpen,outerXAxis,outerYAxis,outerShowAllTempSegments,outerHeight,outerView},
+    outer:{outerSidebarOpen,outerChartOpen,outerXAxis,outerYAxis,outerShowAllSegments,outerApplyOffsets,outerShowLegend,outerHeight,outerView},
     files:files.map(f=>({
       id:f.id,name:f.name,color:f.color,meta:f.meta,data:f.data,
       chartScale:f.chartScale,sidebarOpen:f.sidebarOpen,chartOpen:f.chartOpen!==false,mode:f.mode,
@@ -1216,7 +1264,9 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
     outerChartOpen=payload.outer?.outerChartOpen!==false;
     outerXAxis=payload.outer?.outerXAxis==='temp'?'temp':'time';
     outerYAxis=payload.outer?.outerYAxis==='temp'?'temp':'heatflow';
-    outerShowAllTempSegments=!!payload.outer?.outerShowAllTempSegments;
+    outerShowAllSegments=!!(payload.outer?.outerShowAllSegments??payload.outer?.outerShowAllTempSegments);
+    outerApplyOffsets=payload.outer?.outerApplyOffsets!==false;
+    outerShowLegend=payload.outer?.outerShowLegend!==false;
     outerHeight=clamp(parseInt(payload.outer?.outerHeight,10)||outerHeight,260,1000);
     outerView=payload.outer?.outerView||{xMin:null,xMax:null,yMin:null,yMax:null};
   }
