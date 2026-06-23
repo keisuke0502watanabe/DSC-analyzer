@@ -300,9 +300,9 @@ canvas{width:100%;height:100%}
       </div>
       <div class="db-tree-order">
         <span>Tree:</span>
-        <select id="dbTreeL1" onchange="applyDbTreeOrder()"></select>
-        <select id="dbTreeL2" onchange="applyDbTreeOrder()"></select>
-        <select id="dbTreeL3" onchange="applyDbTreeOrder()"></select>
+        <span id="dbTreeLevels" style="display:contents"></span>
+        <button class="btn" id="dbTreeRemoveLevel" onclick="removeDbTreeLevel()" title="階層を1つ減らす" style="padding:1px 7px">−</button>
+        <button class="btn" id="dbTreeAddLevel" onclick="addDbTreeLevel()" title="階層を追加（最大5）" style="padding:1px 7px">+</button>
       </div>
       <div class="db-tree-order">
         <span>Sort:</span>
@@ -385,6 +385,8 @@ canvas{width:100%;height:100%}
     <div class="topbar-sep"></div>
     <button class="btn" onclick="exportFullDb()">DB Export</button>
     <button class="btn" onclick="document.getElementById('dbImportIn').click()">DB Import</button>
+    <button class="btn" id="autoBackupBtn" onclick="autoBackup.onClick()" title="ローカルフォルダへ DB 全体を自動バックアップ（Chrome/Edge）">Backup: off</button>
+    <button class="btn warn" id="autoBackupOffBtn" onclick="autoBackup.disable()" style="display:none" title="自動バックアップを解除">x</button>
     <div style="flex:1"></div>
     <button class="btn" id="themeBtn" onclick="toggleTheme()" title="ライト/ダーク切替" style="font-size:14px;padding:2px 7px">🌙</button>
     <div class="adapter-badge" id="adapterBadge">IndexedDB</div>
@@ -803,7 +805,9 @@ let fileFiltersOpen=false;
 // each branch carries a checkbox that bulk-stages every file under it into the basket.
 const DB_TREE_FIELDS=['sampleName','measDate','segCount','minTemp','maxIsoMin','sampleMass','name'];
 const DB_TREE_LABELS={sampleName:'Sample',measDate:'Meas date',segCount:'Segments',minTemp:'Min temp',maxIsoMin:'Iso hold',sampleMass:'Mass',name:'Filename'};
-let dbTreeOrder=['sampleName'];   // active grouping levels ([] = flat list)
+const DB_TREE_MAX_LEVELS=5;
+const DB_TREE_MIN_LEVELS=1;
+let dbTreeOrder=['sampleName'];   // active grouping levels (1..DB_TREE_MAX_LEVELS, add/remove with −/+)
 let dbTreeCollapsed={};
 let dbTreeGroups={};              // nodeKey -> [fileId,...] (rebuilt each render)
 let dbFileSort='saved:desc';      // leaf/flat sort: '<field>:asc|desc' (field incl. 'saved')
@@ -841,25 +845,47 @@ function setDbTreeBranchChecked(nodeKey,checked){
   else stageBasket=stageBasket.filter(id=>!ids.includes(id));
   renderStageBasket();updateTreeCheckStates();
 }
-function toggleDbTreeNode(key){dbTreeCollapsed[key]=!dbTreeCollapsed[key];renderDbFileList();}
+/** DB File Cache tree (node keys prefixed "root") defaults collapsed; explicit toggles win. */
+function isDbTreeCollapsed(key){
+  if(key in dbTreeCollapsed)return !!dbTreeCollapsed[key];
+  return String(key).startsWith('root');
+}
+function toggleDbTreeNode(key){dbTreeCollapsed[key]=!isDbTreeCollapsed(key);renderDbFileList();}
 function setDbFileSort(v){dbFileSort=v;const ss=document.getElementById('dbFileSortSel');if(ss&&ss.value!==v)ss.value=v;try{localStorage.setItem('dsc_db_file_sort',v);}catch(_e){}renderDbFileList();}
+function persistDbTreeOrder(){try{localStorage.setItem('dsc_db_tree_order',JSON.stringify(dbTreeOrder));}catch(_e){}}
+/** Render one <select> per active grouping level (1..DB_TREE_MAX_LEVELS; add/remove with the −/+ buttons). */
 function initDbTreeOrderUi(){
-  ['dbTreeL1','dbTreeL2','dbTreeL3'].forEach((id,idx)=>{
-    const el=document.getElementById(id);if(!el)return;
-    el.innerHTML=`<option value="(none)">— none —</option>`+DB_TREE_FIELDS.map(v=>`<option value="${v}">${DB_TREE_LABELS[v]}</option>`).join('');
-    el.value=dbTreeOrder[idx]||'(none)';
-  });
+  const host=document.getElementById('dbTreeLevels');
+  if(host){
+    const opts=DB_TREE_FIELDS.map(v=>`<option value="${v}">${DB_TREE_LABELS[v]}</option>`).join('');
+    host.innerHTML=dbTreeOrder.map((_f,idx)=>`<select id="dbTreeL${idx+1}" onchange="applyDbTreeOrder()">${opts}</select>`).join('');
+    dbTreeOrder.forEach((field,idx)=>{const el=document.getElementById('dbTreeL'+(idx+1));if(el)el.value=field;});
+    const addBtn=document.getElementById('dbTreeAddLevel'),remBtn=document.getElementById('dbTreeRemoveLevel');
+    if(addBtn)addBtn.disabled=dbTreeOrder.length>=DB_TREE_MAX_LEVELS;
+    if(remBtn)remBtn.disabled=dbTreeOrder.length<=DB_TREE_MIN_LEVELS;
+  }
   const ss=document.getElementById('dbFileSortSel');if(ss)ss.value=dbFileSort;
 }
 function applyDbTreeOrder(){
-  const picked=[];
-  for(const id of ['dbTreeL1','dbTreeL2','dbTreeL3']){const v=document.getElementById(id)?.value;if(!v||v==='(none)')break;if(!picked.includes(v))picked.push(v);}
-  dbTreeOrder=picked;
-  try{localStorage.setItem('dsc_db_tree_order',JSON.stringify(dbTreeOrder));}catch(_e){}
-  initDbTreeOrderUi();renderDbFileList();
+  const picked=dbTreeOrder.map((_f,idx)=>document.getElementById('dbTreeL'+(idx+1))?.value).filter(Boolean);
+  dbTreeOrder=picked.length?picked:['sampleName'];
+  persistDbTreeOrder();initDbTreeOrderUi();renderDbFileList();
+}
+/** Pick a sensible default for a newly-added level: first field not already used. */
+function nextDbTreeField(){const used=new Set(dbTreeOrder);return DB_TREE_FIELDS.find(v=>!used.has(v))||DB_TREE_FIELDS[0];}
+function addDbTreeLevel(){
+  if(dbTreeOrder.length>=DB_TREE_MAX_LEVELS)return;
+  dbTreeOrder=[...dbTreeOrder,nextDbTreeField()];
+  persistDbTreeOrder();initDbTreeOrderUi();renderDbFileList();
+}
+function removeDbTreeLevel(){
+  if(dbTreeOrder.length<=DB_TREE_MIN_LEVELS)return;
+  dbTreeOrder=dbTreeOrder.slice(0,-1);
+  persistDbTreeOrder();initDbTreeOrderUi();renderDbFileList();
 }
 function initDbTreeState(){
-  try{const o=JSON.parse(localStorage.getItem('dsc_db_tree_order')||'null');if(Array.isArray(o))dbTreeOrder=o.filter(v=>DB_TREE_FIELDS.includes(v));}catch(_e){}
+  try{const o=JSON.parse(localStorage.getItem('dsc_db_tree_order')||'null');if(Array.isArray(o)){const f=o.filter(v=>DB_TREE_FIELDS.includes(v));if(f.length)dbTreeOrder=f.slice(0,DB_TREE_MAX_LEVELS);}}catch(_e){}
+  if(!dbTreeOrder.length)dbTreeOrder=['sampleName'];
   try{const s=localStorage.getItem('dsc_db_file_sort');if(s)dbFileSort=s;}catch(_e){}
   initDbTreeOrderUi();
 }
@@ -873,7 +899,7 @@ function buildDbTree(items,level,path){
   return keys.map(k=>{
     const groupItems=m.get(k),nodeKey=`${path}/${field}:${k}`,nodeArg=encodeURIComponent(nodeKey);
     dbTreeGroups[nodeKey]=groupItems.map(f=>f.id);
-    const collapsed=!!dbTreeCollapsed[nodeKey],cs=dbBranchCheckState(dbTreeGroups[nodeKey]);
+    const collapsed=isDbTreeCollapsed(nodeKey),cs=dbBranchCheckState(dbTreeGroups[nodeKey]);
     return `<div class="db-tree-node">
       <div class="db-tree-head" onclick="toggleDbTreeNode(decodeURIComponent('${nodeArg}'))">
         <span class="db-tree-tri">${collapsed?'▸':'▾'}</span>
@@ -964,6 +990,7 @@ async function refreshDbPanels(){
     stageBasketExcluded.forEach(id=>{if(!liveIds.has(id))stageBasketExcluded.delete(id);});
     renderDbFileList();renderDbProjectList();renderStageBasket();
     backfillFileStats();
+    try{autoBackup.scheduleBackup();}catch(_e){}   // mirror the full DB to the local backup folder (if on)
   }catch(e){console.error(e);toast('DB read error: '+e.message,'err');}
 }
 function filterDbFiles(){fileSearchQuery=document.getElementById('fileSearch').value.toLowerCase();renderDbFileList();}
@@ -1154,8 +1181,7 @@ function renderDbProjectList(){
   }
   function renderFolderNode(name,node,pathParts,depth){
     const nodeKey=pathParts.join('/');
-    if(projectFolderOpenState[nodeKey]===undefined)projectFolderOpenState[nodeKey]=true;
-    const open=projectFolderOpenState[nodeKey]!==false;
+    const open=projectFolderOpenState[nodeKey]===true;   // default closed (XRD parity)
     let h=`<div class="sb-section" style="padding:.3rem .65rem;border-bottom:none;margin-left:${depth*10}px">
       <button class="acc-head" type="button" onclick="toggleProjectFolder('${encodeURIComponent(nodeKey)}')">
         <span class="sb-title" style="margin-bottom:0">${esc(name)} (${countNodeProjects(node)})</span>
@@ -1171,8 +1197,7 @@ function renderDbProjectList(){
   }
   let html='';
   if(root.projects.length){
-    if(projectFolderOpenState.__ungrouped===undefined)projectFolderOpenState.__ungrouped=true;
-    const open=projectFolderOpenState.__ungrouped!==false;
+    const open=projectFolderOpenState.__ungrouped===true;   // default closed (XRD parity)
     html+=`<div class="sb-section" style="padding:.3rem .65rem;border-bottom:none">
       <button class="acc-head" type="button" onclick="toggleProjectFolder('__ungrouped')">
         <span class="sb-title" style="margin-bottom:0">Ungrouped (${root.projects.length})</span>
@@ -1188,7 +1213,7 @@ function renderDbProjectList(){
 }
 function toggleProjectFolder(folderKey){
   const folder=folderKey==='__ungrouped'?'__ungrouped':decodeURIComponent(folderKey);
-  projectFolderOpenState[folder]=!(projectFolderOpenState[folder]!==false);
+  projectFolderOpenState[folder]=!(projectFolderOpenState[folder]===true);
   renderDbProjectList();
 }
 function normalizeFolderPath(v){
@@ -2563,19 +2588,143 @@ function enrichProjectPayloadFromDump(projectPayload,fileRecordsByName){
   });
   return {...projectPayload,files};
 }
+/** Build the full-DB dump payload (same shape DB Import expects). Shared by DB Export and the local-folder mirror. */
+async function buildFullDbPayload(){
+  const [allFiles,allProjects]=await Promise.all([
+    adapter.listFiles().catch(()=>[]),
+    adapter.listProjects().catch(()=>[])
+  ]);
+  const cachedNames=new Set((allFiles||[]).map(f=>f.name).filter(Boolean));
+  const projects=(allProjects||[]).map(p=>slimDbProjectRecord(p,cachedNames));
+  return {version:2,exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles||[],projects,projectsSlimmed:true};
+}
 async function exportFullDb(){
   try{
-    const [allFiles,allProjects]=await Promise.all([
-      adapter.listFiles().catch(()=>[]),
-      adapter.listProjects().catch(()=>[])
-    ]);
-    const cachedNames=new Set((allFiles||[]).map(f=>f.name).filter(Boolean));
-    const projects=(allProjects||[]).map(p=>slimDbProjectRecord(p,cachedNames));
-    const payload={version:2,exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles,projects,projectsSlimmed:true};
+    const payload=await buildFullDbPayload();
     downloadJson(`dsc_db_full_${getDateStamp()}.json`,payload);
-    toast(`DB exported — ${allFiles.length} files, ${allProjects.length} projects`);
+    toast(`DB exported — ${payload.files.length} files, ${payload.projects.length} projects`);
   }catch(e){toast('Export error: '+(e.message||e),'err');}
 }
+
+// ════════════════════════════════════════════════
+//  AUTO-BACKUP to a local folder (File System Access API) — mirrors XRD analyzer.
+//  The whole DB dump is written to a user-chosen folder on every save, so the data
+//  survives even if the browser cache is cleared (restore via DB Import).
+//  The folder handle is persisted in a tiny IDB kept separate from the swappable adapter.
+// ════════════════════════════════════════════════
+const AUTO_BACKUP_KEY='autoBackupDir';
+// Tiny IDB kv store for the directory handle.
+function _bkOpen(){
+  return new Promise((res,rej)=>{
+    const rq=indexedDB.open('dsc_local_backup',1);
+    rq.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('kv'))db.createObjectStore('kv');};
+    rq.onsuccess=e=>res(e.target.result);
+    rq.onerror=e=>rej(e.target.error);
+  });
+}
+async function _bkGet(key){const db=await _bkOpen();return new Promise((res,rej)=>{const tx=db.transaction('kv','readonly');const rq=tx.objectStore('kv').get(key);rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});}
+async function _bkSet(key,val){const db=await _bkOpen();return new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(val,key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+async function _bkDel(key){const db=await _bkOpen();return new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});}
+
+const autoBackup={
+  handle:null,
+  state:'off', // 'off' | 'on' | 'reconnect'
+  timer:null,
+  lastBackupAt:null,
+  supported(){return typeof window!=='undefined'&&typeof window.showDirectoryPicker==='function'&&window.isSecureContext;},
+  async loadHandle(){try{return await _bkGet(AUTO_BACKUP_KEY)||null;}catch(_e){return null;}},
+  async queryPerm(h){try{return await h.queryPermission({mode:'readwrite'});}catch(_e){return 'denied';}},
+  async requestPerm(h){try{return await h.requestPermission({mode:'readwrite'});}catch(_e){return 'denied';}},
+  setState(s){this.state=s;this.updateUi();},
+  async restoreOnStartup(){
+    if(!this.supported()){this.setState('off');return;}
+    const h=await this.loadHandle();
+    if(!h){this.setState('off');return;}
+    this.handle=h;
+    const p=await this.queryPerm(h);
+    if(p==='granted'){this.setState('on');this.scheduleBackup(8000);}
+    else this.setState('reconnect');
+  },
+  async pickFolder(){
+    if(!this.supported()){toast('自動バックアップは Chrome/Edge が必要です（File System Access API）','err');return;}
+    let h;
+    try{h=await window.showDirectoryPicker({mode:'readwrite',id:'dscBackup'});}
+    catch(e){if(e&&e.name==='AbortError')return;toast('フォルダ選択に失敗: '+(e.message||e),'err');return;}
+    if(await this.requestPerm(h)!=='granted'){toast('書き込み許可が得られませんでした','err');return;}
+    this.handle=h;
+    try{await _bkSet(AUTO_BACKUP_KEY,h);}catch(e){console.error(e);}
+    this.setState('on');
+    await this.writeNow(true);
+  },
+  async reconnect(){
+    if(!this.handle)return this.pickFolder();
+    if(await this.requestPerm(this.handle)!=='granted'){toast('書き込み許可が得られませんでした','err');return;}
+    this.setState('on');
+    await this.writeNow(true);
+  },
+  async disable(){
+    this.handle=null;clearTimeout(this.timer);this.setState('off');
+    try{await _bkDel(AUTO_BACKUP_KEY);}catch(_e){}
+    toast('自動バックアップを解除しました');
+  },
+  onClick(){
+    if(this.state==='on')this.writeNow(true);
+    else if(this.state==='reconnect')this.reconnect();
+    else this.pickFolder();
+  },
+  scheduleBackup(delay=2500){
+    if(this.state!=='on'||!this.handle)return;
+    clearTimeout(this.timer);
+    this.timer=setTimeout(()=>{this.writeNow(false);},delay);
+  },
+  async writeFile(name,text){
+    const fh=await this.handle.getFileHandle(name,{create:true});
+    const w=await fh.createWritable();
+    await w.write(text);await w.close();
+  },
+  async writeNow(announce){
+    if(!this.handle)return;
+    if(await this.queryPerm(this.handle)!=='granted'){this.setState('reconnect');if(announce)toast('バックアップにはフォルダの再接続が必要です','err');return;}
+    try{
+      const payload=await buildFullDbPayload();
+      // Don't clobber existing backups with an empty snapshot (e.g. after an accidental Clear).
+      if(!payload.files.length&&!payload.projects.length){
+        if(announce)toast('バックアップ対象がありません（DB が空です）');
+        return;
+      }
+      const text=JSON.stringify(payload,null,2);
+      const d=new Date(),pad=n=>String(n).padStart(2,'0');
+      const day=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+      await this.writeFile('dsc_db_latest.json',text);
+      await this.writeFile(`dsc_db_${day}.json`,text);
+      this.lastBackupAt=new Date();
+      this.updateUi();
+      if(announce)toast(`フォルダへバックアップしました（${payload.files.length} files, ${payload.projects.length} projects）`);
+    }catch(e){console.error(e);this.setState('reconnect');if(announce)toast('バックアップ失敗: '+(e.message||e),'err');}
+  },
+  updateUi(){
+    const btn=document.getElementById('autoBackupBtn');
+    const off=document.getElementById('autoBackupOffBtn');
+    if(!btn)return;
+    const name=this.handle&&this.handle.name?this.handle.name:'';
+    btn.classList.remove('green','warn');
+    if(this.state==='on'){
+      btn.textContent='Backup: '+(name||'on');
+      btn.title='自動バックアップ ON → "'+name+'"。クリックで今すぐ保存。'+(this.lastBackupAt?(' 最終: '+this.lastBackupAt.toLocaleTimeString()):'');
+      btn.classList.add('green');
+      if(off)off.style.display='';
+    }else if(this.state==='reconnect'){
+      btn.textContent='Backup: reconnect';
+      btn.title='バックアップフォルダ "'+name+'" の許可が必要です。クリックで再接続。';
+      btn.classList.add('warn');
+      if(off)off.style.display='';
+    }else{
+      btn.textContent='Backup: off';
+      btn.title=this.supported()?'クリックで DB 自動バックアップ用のフォルダを選択。':'自動バックアップ非対応（Chrome/Edge かつセキュアコンテキストが必要）。';
+      if(off)off.style.display='none';
+    }
+  }
+};
 async function importFullDb(file){
   const r=new FileReader();
   r.addEventListener('loadend',async()=>{
@@ -2709,6 +2858,7 @@ async function dupFinderDeleteSelected(){
   initDbLayout();
   initDbTreeState();
   initLegendParts();
+  try{await autoBackup.restoreOnStartup();}catch(e){console.error(e);}
   if(typeof indexedDB==='undefined')toast('IndexedDB 非対応: DB キャッシュは使えません','err');
   try{await refreshDbPanels();}catch(e){console.error(e);toast('DB init: '+(e.message||e),'err');}
   try{renderOuterChart();}catch(e){console.error(e);toast('Chart init: '+(e.message||e),'err');}
