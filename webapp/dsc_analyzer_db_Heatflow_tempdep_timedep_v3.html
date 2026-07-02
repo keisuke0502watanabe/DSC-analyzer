@@ -1080,14 +1080,13 @@ function toggleStageExcluded(id,included){
   renderStageBasket();
 }
 function removeFromStageBasket(id){
-  const meta=dbFileMetaById(id);
   stageBasket=stageBasket.filter(x=>x!==id);stageBasketExcluded.delete(id);
   // Also drop the file this staged item plotted (if any) from the plot and patterns.
+  // Match on the originating cache id (srcCacheId), not the name, so a manually-loaded
+  // file that merely shares the name is never destroyed.
   let removed=false;
-  if(meta){
-    const f=files.find(x=>x.name===meta.name&&x.fromBasket);
-    if(f){if(f.chart)f.chart.destroy();files=files.filter(x=>x!==f);removed=true;}
-  }
+  const f=files.find(x=>x.srcCacheId===id);
+  if(f){if(f.chart)f.chart.destroy();files=files.filter(x=>x!==f);removed=true;}
   renderStageBasket();updateTreeCheckStates();
   if(removed)renderAll(); // renderPatternPanel prunes the now-missing segUids; outer chart refreshes
 }
@@ -1123,15 +1122,15 @@ async function plotStageBasket(){
   if(!ids.length){toast('No staged files to plot');return;}
   let loaded=0,reused=0,failed=0;
   for(const id of ids){
-    const meta=dbFileMetaById(id);
-    // Reuse an already-loaded file by name instead of parsing a duplicate.
-    if(meta&&files.some(f=>f.name===meta.name)){const f=files.find(x=>x.name===meta.name);reused++;markFileSegsOuter(f);f.fromBasket=true;continue;}
+    // Reuse the file already plotted from THIS cache id (not merely a same-named one).
+    const already=files.find(f=>f.srcCacheId===id);
+    if(already){reused++;markFileSegsOuter(already);already.fromBasket=true;continue;}
     try{
       const rec=await adapter.getFile(id);
       if(!rec){failed++;continue;}
       const before=files.length;
       parse(rec.rawText,rec.name,true); // defer render; one renderAll() below
-      if(files.length>before){const f=files[files.length-1];markFileSegsOuter(f);f.fromBasket=true;loaded++;}else failed++;
+      if(files.length>before){const f=files[files.length-1];f.srcCacheId=id;markFileSegsOuter(f);f.fromBasket=true;loaded++;}else failed++;
     }catch(e){console.error(e);failed++;}
   }
   renderAll();
