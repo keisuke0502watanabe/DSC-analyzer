@@ -365,6 +365,29 @@ class IndexedDBAdapter extends StorageAdapter {
   }
   async saveFile(o){return this._tx('files','readwrite',st=>st.put({...o,savedAt:new Date().toISOString()}));}
   async listFiles(){return this._listAllWithKeys('files');}
+  /** rawText と data を除いたメタデータのみを返す軽量版 listFiles。サイドバー表示用。 */
+  async listFilesMeta(){
+    const db=await this._open();
+    return new Promise((res,rej)=>{
+      const out=[];
+      const tx=db.transaction('files','readonly');
+      const st=tx.objectStore('files');
+      const rq=st.openCursor();
+      rq.onsuccess=e=>{
+        const c=e.target.result;
+        if(!c)return;
+        const v=c.value;
+        if(v&&typeof v==='object'){
+          const {rawText:_r,data:_d,...meta}=v;
+          out.push({...meta,id:v.id!=null&&v.id!==''?v.id:c.primaryKey});
+        }
+        c.continue();
+      };
+      rq.onerror=()=>rej(rq.error);
+      tx.onerror=()=>rej(tx.error);
+      tx.oncomplete=()=>res(out);
+    });
+  }
   async getFile(id){return this._tx('files','readonly',st=>st.get(id));}
   async deleteFile(id){return this._tx('files','readwrite',st=>st.delete(id));}
   async clearFiles(){
@@ -468,7 +491,9 @@ let dbFileCache=[];let dbProjectCache=[];let fileSearchQuery='';
 const projectFolderOpenState={};
 async function refreshDbPanels(){
   try{
-    let fc=await adapter.listFiles().catch(()=>[]);
+    // listFilesMeta() はサイドバー表示に必要なメタのみ取得（rawText/data を除外）→高速化
+    const listMeta=typeof adapter.listFilesMeta==='function'?adapter.listFilesMeta.bind(adapter):adapter.listFiles.bind(adapter);
+    let fc=await listMeta().catch(()=>[]);
     let pc=await adapter.listProjects().catch(()=>[]);
     if(!Array.isArray(fc))fc=[];
     if(!Array.isArray(pc))pc=[];
@@ -642,6 +667,16 @@ function downloadText(filename,text){
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
 }
+function downloadJson(filename,obj,{pretty=false}={}){
+  let json;
+  try{json=JSON.stringify(obj,null,pretty?2:undefined);}
+  catch(e){
+    const msg=e?.message||String(e);
+    if(/invalid string length/i.test(msg))throw new Error('JSONが大きすぎます。DB Export ではなく Export JSON / Export Data を使うか、保存済みプロジェクト数を減らしてください。');
+    throw e;
+  }
+  downloadText(filename,json);
+}
 function getDateStamp(){const d=new Date(),pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;}
 function chartToPngDataUrl(chart){if(!chart)return null;chart.resize();return chart.toBase64Image('image/png',1);}
 function exportChartImage(chart,filenameBase,format='png'){
@@ -743,7 +778,7 @@ function countDataRows(txt){
   for(let i=start;i<lines.length;i++){const c=lines[i].trim().split(/\t/);if(c.length>=5&&!c.slice(0,5).some(v=>isNaN(parseFloat(v))))count++;}
   return count;
 }
-function parse(txt,fname){
+function parseDscRawText(txt,fname=''){
   const lines=txt.split('\n');const meta={};const methodSteps=[];let dataStart=-1;
   for(let i=0;i<lines.length;i++){
     const l=lines[i];
@@ -754,14 +789,20 @@ function parse(txt,fname){
     const holdMatch=l.match(/^(\d+)\)\s*Hold\s+for\s+([\d.]+)\s*min\s+at\s+([-\d.]+).C/i);
     if(holdMatch)methodSteps.push({num:+holdMatch[1],type:'isothermal',fromT:+holdMatch[3],toT:+holdMatch[3],rate:0,duration:+holdMatch[2]});
   }
-  if(dataStart<0){alert(`${fname}: Data columns not found`);return;}
+  if(dataStart<0)return null;
   const rows=[];
   for(let i=dataStart;i<lines.length;i++){
     const c=lines[i].trim().split(/\t/);if(c.length<5)continue;
     const n=c.map(v=>parseFloat(v.trim()));if(n.slice(0,5).some(isNaN))continue;
     rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
   }
-  if(!rows.length){alert(`${fname}: No numeric data`);return;}
+  if(!rows.length)return null;
+  return {meta,methodSteps,rows};
+}
+function parse(txt,fname){
+  const parsed=parseDscRawText(txt,fname);
+  if(!parsed){alert(`${fname}: Data columns not found or no numeric data`);return;}
+  const {meta,methodSteps,rows}=parsed;
   const segments=assignSegments(rows,methodSteps).map((s,idx)=>({
     ...s,idx,visible:true,selectedOuter:false,
     dOffset:0,yGain:1,
@@ -864,7 +905,7 @@ function axisUnitY(mode){return mode==='temp'?'°C':'mW/mg';}
 function renderFileOuters(){
   const grid=document.getElementById('chartsGrid');grid.innerHTML='';
   files.forEach(f=>{
-    const outer=document.createElement('div');outer.className='chart-outer';
+    const outer=document.createElement('div');outer.className='chart-outer';outer.dataset.fid=f.id;
     const paneHeight=Math.max(280,Math.round(480*(f.chartScale/100)));
     outer.innerHTML=`
       <div class="chart-head">
@@ -1007,7 +1048,17 @@ function renderFileChart(f){
 //  FILE CONTROLS
 // ════════════════════════════════════════════════
 function findFile(fid){return files.find(f=>f.id===fid)||null;}
-function removeFile(fid){const f=findFile(fid);if(!f)return;if(f.chart)f.chart.destroy();files=files.filter(x=>x.id!==fid);delete fileAcc[fid];renderAll();}
+function removeFile(fid){
+  const f=findFile(fid);if(!f)return;
+  if(f.chart)f.chart.destroy();
+  files=files.filter(x=>x.id!==fid);
+  delete fileAcc[fid];
+  // 該当要素だけ削除（残りファイルのチャートを再生成しない）
+  const el=document.querySelector(`.chart-outer[data-fid="${fid}"]`);
+  if(el)el.remove();
+  // Outer chartはsegment選択状態が変わりうるので更新
+  renderOuterChart();
+}
 function toggleFileChartBody(fid){const f=findFile(fid);if(!f)return;f.chartOpen=f.chartOpen===false?true:false;renderFileOuters();}
 function toggleFileAcc(fid,key){if(!fileAcc[fid])fileAcc[fid]={controls:true,span:true,segments:true};fileAcc[fid][key]=!fileAcc[fid][key];renderFileOuters();}
 function toggleFileSidebar(fid){const f=findFile(fid);if(!f)return;f.sidebarOpen=!f.sidebarOpen;renderFileOuters();}
@@ -1301,7 +1352,10 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
   });
   renderAll();
 }
-function exportProjectJson(){downloadText(`dsc_hf_xy_${getDateStamp()}.json`,JSON.stringify(serializeProject()));}
+function exportProjectJson(){
+  try{downloadJson(`dsc_hf_xy_${getDateStamp()}.json`,serializeProject());}
+  catch(e){toast('Export error: '+(e.message||e),'err');}
+}
 function importProjectJson(file){
   const r=new FileReader();
   r.addEventListener('loadend',()=>{
@@ -1311,7 +1365,10 @@ function importProjectJson(file){
   });
   try{r.readAsText(file,'UTF-8');}catch(e){toast('読込失敗: '+e.message,'err');}
 }
-function exportDataJson(){downloadText(`dsc_hf_xy_data_${getDateStamp()}.json`,JSON.stringify(serializeDataOnly()));}
+function exportDataJson(){
+  try{downloadJson(`dsc_hf_xy_data_${getDateStamp()}.json`,serializeDataOnly());}
+  catch(e){toast('Export error: '+(e.message||e),'err');}
+}
 function importDataJson(file){
   const r=new FileReader();
   r.addEventListener('loadend',()=>{
@@ -1339,17 +1396,43 @@ function chartTickColor(){return isLight?'#aaa':'#666';}
 // ════════════════════════════════════════════════
 //  FULL DB EXPORT / IMPORT
 // ════════════════════════════════════════════════
+function slimDbProjectRecord(project,cachedNames){
+  if(!project?.payload?.files||!Array.isArray(project.payload.files))return project;
+  let changed=false;
+  const files=project.payload.files.map(f=>{
+    if(!f?.name||!cachedNames.has(f.name))return f;
+    if(!Array.isArray(f.data)||!f.data.length)return f;
+    changed=true;
+    const {data:_d,...rest}=f;
+    return rest;
+  });
+  return changed?{...project,payload:{...project.payload,files}}:project;
+}
+function enrichProjectPayloadFromDump(projectPayload,fileRecordsByName){
+  if(!projectPayload?.files||!Array.isArray(projectPayload.files))return projectPayload;
+  const files=projectPayload.files.map(src=>{
+    const rows=Array.isArray(src.data)?src.data:[];
+    if(rows.length)return src;
+    const rec=fileRecordsByName.get(src.name);
+    if(!rec?.rawText)return src;
+    const parsed=parseDscRawText(rec.rawText,src.name);
+    if(!parsed?.rows?.length)return src;
+    return {...src,meta:{...parsed.meta,...src.meta},data:parsed.rows};
+  });
+  return {...projectPayload,files};
+}
 async function exportFullDb(){
   try{
-    const [allFiles,allProjects]=await Promise.all([adapter.listFiles(),adapter.listProjects()]);
-    const payload={version:1,exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles,projects:allProjects};
-    const json=JSON.stringify(payload,null,2);
-    const blob=new Blob([json],{type:'application/json;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download=`dsc_db_full_${getDateStamp()}.json`;a.click();
-    URL.revokeObjectURL(url);
+    const [allFiles,allProjects]=await Promise.all([
+      adapter.listFiles().catch(()=>[]),
+      adapter.listProjects().catch(()=>[])
+    ]);
+    const cachedNames=new Set((allFiles||[]).map(f=>f.name).filter(Boolean));
+    const projects=(allProjects||[]).map(p=>slimDbProjectRecord(p,cachedNames));
+    const payload={version:2,exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles,projects,projectsSlimmed:true};
+    downloadJson(`dsc_db_full_${getDateStamp()}.json`,payload);
     toast(`DB exported — ${allFiles.length} files, ${allProjects.length} projects`);
-  }catch(e){toast('Export error: '+e.message,'err');}
+  }catch(e){toast('Export error: '+(e.message||e),'err');}
 }
 async function importFullDb(file){
   const r=new FileReader();
@@ -1366,17 +1449,22 @@ async function importFullDb(file){
       if(choice){mode='replace';}
       else{const merge=window.confirm('マージモードで読み込みますか？\n同名ファイル・プロジェクトはスキップされます\n\nOK = マージ / キャンセル = 中止');if(!merge)return;mode='merge';}
       if(mode==='replace'){await adapter.clearFiles();await adapter.clearProjects();}
+      const fileRecordsByName=new Map();
       let fImported=0,fSkipped=0;
       const existingFiles=mode==='merge'?await adapter.listFiles():[];
+      if(mode==='merge')existingFiles.forEach(f=>{if(f?.name)fileRecordsByName.set(f.name,f);});
       for(const f of payload.files){
-        if(mode==='merge'&&existingFiles.find(x=>x.name===f.name)){fSkipped++;continue;}
+        if(mode==='merge'&&existingFiles.find(x=>x.name===f.name)){fSkipped++;if(f.name)fileRecordsByName.set(f.name,existingFiles.find(x=>x.name===f.name)||f);continue;}
         const {id:_,...rest}=f;await adapter.saveFile(rest);fImported++;
+        if(f.name)fileRecordsByName.set(f.name,f);
       }
       let pImported=0,pSkipped=0;
       const existingProjects=mode==='merge'?await adapter.listProjects():[];
       for(const p of payload.projects){
         if(mode==='merge'&&existingProjects.find(x=>x.name===p.name&&x.savedAt===p.savedAt)){pSkipped++;continue;}
-        const {id:_,...rest}=p;await adapter.saveProject(rest);pImported++;
+        const payloadEnriched=enrichProjectPayloadFromDump(p.payload,fileRecordsByName);
+        const {id:_,...rest}={...p,payload:payloadEnriched};
+        await adapter.saveProject(rest);pImported++;
       }
       await refreshDbPanels();
       const skipMsg=(fSkipped+pSkipped)>0?` (${fSkipped+pSkipped} skipped)`:'';

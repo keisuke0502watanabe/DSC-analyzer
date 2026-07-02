@@ -663,10 +663,13 @@ let basketSearch='';
 let basketSelectedOnly=false;
 // Per-pattern plot windows: patternId → { open, chart, view, state }
 let patternWindows={};
-function defaultWindowState(){return {xAxis:'time',yAxis:'heatflow',offsetMode:'equal',interval:'',showLegend:true,legendPos:'top',height:300,overrides:{}};}
+function defaultWindowState(){return {xAxis:'time',yAxis:'heatflow',offsetMode:'equal',interval:'',showLegend:true,legendPos:'top',height:300,overrides:{},fileOverrides:{}};}
 // Per-window, per-segment overrides (label/color/offsets/gain) — independent of the shared
 // segment fields and of other windows, so each window specifies its own.
 function winOverride(st,segUid){if(!st.overrides)st.overrides={};if(!st.overrides[segUid])st.overrides[segUid]={label:'',color:'',xOffset:0,yOffset:0,gain:1};return st.overrides[segUid];}
+// Per-window, per-FILE (series) main offset — applied on top of every step of that file in this window.
+// Keyed by the file's STABLE fuid (NOT f.id, which is reassigned on project load) so it survives save/reload.
+function winFileOverride(st,fuid){if(!st.fileOverrides)st.fileOverrides={};if(!st.fileOverrides[fuid])st.fileOverrides[fuid]={mainXOffset:0,mainYOffset:0};return st.fileOverrides[fuid];}
 function getPatternWindow(pid){if(!patternWindows[pid])patternWindows[pid]={open:false,chart:null,view:{xMin:null,xMax:null,yMin:null,yMax:null},bounds:{xMin:0,xMax:1,yMin:0,yMax:1},state:defaultWindowState()};return patternWindows[pid];}
 let outerChart=null; let outerSidebarOpen=true;
 let outerChartOpen=true;
@@ -1437,14 +1440,30 @@ function parseDscRawText(txt,fname=''){
     if(holdMatch)methodSteps.push({num:+holdMatch[1],type:'isothermal',fromT:+holdMatch[3],toT:+holdMatch[3],rate:0,duration:+holdMatch[2]});
   }
   if(dataStart<0)return null;
-  const rows=[];
+  // Resolve the Sample-Temperature and Heat-Flow columns by header name so a different
+  // PerkinElmer export layout (inserted/reordered columns) can't silently shift them to
+  // the wrong index. The column title spans two header rows (lines[dataStart-2] names,
+  // lines[dataStart-1] continuation), e.g. "Sample"+"Temperature", "Uncorrected"+"Heat Flow".
+  // Data rows are left-trimmed before splitting, so leading empty header columns are dropped
+  // to keep header names aligned with the trimmed data indices. Falls back to the historical
+  // fixed layout (temp=4, heat flow=7) when a name can't be matched — proven correct for the
+  // standard export, where these resolve to exactly 4 and 7.
+  const h1=(lines[dataStart-2]||'').split('\t'), h2=(lines[dataStart-1]||'').split('\t');
+  const rawNames=h1.map((t,i)=>(String(t||'').trim()+' '+String(h2[i]||'').trim()).trim());
+  let lead=0;while(lead<rawNames.length&&rawNames[lead]==='')lead++;
+  const names=rawNames.slice(lead); // names[k] aligns with trimmed data column k
+  const cTemp=(()=>{const i=names.findIndex(t=>/sample\s*temp/i.test(t));return i>=0?i:4;})();
+  const cHf=(()=>{const i=names.findIndex(t=>/uncorrected\s*heat\s*flow/i.test(t));return i>=0?i:7;})();
+  const rows=[];let hfFallback=false;
   for(let i=dataStart;i<lines.length;i++){
     const c=lines[i].trim().split(/\t/);if(c.length<5)continue;
-    const n=c.map(v=>parseFloat(v.trim()));if(n.slice(0,5).some(isNaN))continue;
-    rows.push({time:n[0],hf_raw:n[1],temp:n[4],hf:isNaN(n[7])?n[1]:n[7]});
+    const n=c.map(v=>parseFloat(v.trim()));if(n.slice(0,5).some(isNaN)||isNaN(n[cTemp]))continue;
+    let hf=n[cHf];
+    if(isNaN(hf)){hf=n[1];hfFallback=true;} // heat-flow column missing/short: plot the unsubtracted signal, flagged below
+    rows.push({time:n[0],hf_raw:n[1],temp:n[cTemp],hf});
   }
   if(!rows.length)return null;
-  return {meta,methodSteps,rows};
+  return {meta,methodSteps,rows,hfFallback};
 }
 // PerkinElmer Pyris "Data Collected" is DD/MM/YYYY [HH:MM:SS] → epoch ms (or null).
 function pyrisDate(s){
@@ -1484,6 +1503,7 @@ function parse(txt,fname,defer){
   const parsed=parseDscRawText(txt,fname);
   if(!parsed){alert(`${fname}: Data columns not found or no numeric data`);return;}
   const {meta,methodSteps,rows}=parsed;
+  if(parsed.hfFallback&&!defer)toast(`${fname}: 減算後(Subtracted)の熱流列が見つからないため、未減算(Unsubtracted)信号を表示しています`,'err');
   const segments=assignSegments(rows,methodSteps).map((s,idx)=>({
     ...s,idx,segUid:newUid(),visible:true,selectedOuter:false,
     dOffset:0,yGain:1,
@@ -1492,7 +1512,8 @@ function parse(txt,fname,defer){
   }));
   const id=nextFid++;
   files.push({
-    id,name:fname,color:FC[(files.length)%FC.length],data:rows,segments,meta,
+    id,fuid:newUid(),name:fname,color:FC[(files.length)%FC.length],data:rows,segments,meta,
+    outerMainXOffset:0,outerMainOffset:0,   // per-series (file) main offset, added to every step's sub offset
     chart:null,sidebarOpen:true,mode:'zoom',
     dscX:'time',          // 'temp' | 'time'
     dscY:'heatflow',      // 'heatflow' | 'temp'
@@ -1601,8 +1622,10 @@ function defaultOuterLabel(f,s){return composeLegend(f,s);}
 function defaultOuterColor(f,s){return STYPE_COLOR[s.type]||f.color;}
 function getOuterSegPts(f,s){
   const applyOffsets=outerApplyOffsets;
-  const xShift=applyOffsets&&(isFinite(s.outerXOffset))?s.outerXOffset:0;
-  const yShift=applyOffsets&&(isFinite(s.outerOffset))?s.outerOffset:0;
+  const mainX=isFinite(f.outerMainXOffset)?f.outerMainXOffset:0;   // series (file) main offset
+  const mainY=isFinite(f.outerMainOffset)?f.outerMainOffset:0;
+  const xShift=applyOffsets?(mainX+(isFinite(s.outerXOffset)?s.outerXOffset:0)):0;
+  const yShift=applyOffsets?(mainY+(isFinite(s.outerOffset)?s.outerOffset:0)):0;
   const yGain=(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1;
   return f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>{
     const rawX=outerXAxis==='temp'?r.temp:r.time;
@@ -1985,8 +2008,9 @@ function rawAmpY(f,s,yAxis){let mn=Infinity,mx=-Infinity;for(const r of f.data.s
 // Points for a window's segment using THIS window's per-segment override (offsets/gain).
 function windowSegPts(f,s,st){
   const o=winOverride(st,s.segUid);
-  const xShift=isFinite(o.xOffset)?o.xOffset:0;
-  const yShift=isFinite(o.yOffset)?o.yOffset:0;
+  const fo=winFileOverride(st,f.fuid);   // per-window series (file) main offset
+  const xShift=(isFinite(fo.mainXOffset)?fo.mainXOffset:0)+(isFinite(o.xOffset)?o.xOffset:0);
+  const yShift=(isFinite(fo.mainYOffset)?fo.mainYOffset:0)+(isFinite(o.yOffset)?o.yOffset:0);
   const gain=(isFinite(o.gain)&&o.gain>0)?o.gain:1;
   return f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>{
     const rawX=st.xAxis==='temp'?r.temp:r.time;
@@ -2016,7 +2040,22 @@ function autoScaleWindow(pid){
 }
 function resetWindowOG(pid){
   const w=getPatternWindow(pid),st=w.state,p=patternList.find(x=>x.id===pid);
-  segsForPattern(p).forEach(({s})=>{const o=winOverride(st,s.segUid);o.xOffset=0;o.yOffset=0;o.gain=1;});
+  const seen=new Set();
+  segsForPattern(p).forEach(({s,f})=>{const o=winOverride(st,s.segUid);o.xOffset=0;o.yOffset=0;o.gain=1;if(!seen.has(f.fuid)){seen.add(f.fuid);const fo=winFileOverride(st,f.fuid);fo.mainXOffset=0;fo.mainYOffset=0;}});
+  renderOnePatternWindow(pid);
+}
+// Read this window's per-file (series) main-offset inputs into its fileOverrides.
+function applyPatternWindowMain(pid){
+  const w=getPatternWindow(pid),st=w.state,p=patternList.find(x=>x.id===pid);
+  const seen=new Set();
+  segsForPattern(p).forEach(({f})=>{
+    if(seen.has(f.fuid))return;seen.add(f.fuid);
+    const fo=winFileOverride(st,f.fuid);
+    const xo=document.getElementById(`pwmain-xoff-${pid}-${f.id}`);
+    const yo=document.getElementById(`pwmain-yoff-${pid}-${f.id}`);
+    if(xo){const n=parseFloat(xo.value);fo.mainXOffset=isNaN(n)?0:n;}
+    if(yo){const n=parseFloat(yo.value);fo.mainYOffset=isNaN(n)?0:n;}
+  });
   renderOnePatternWindow(pid);
 }
 function applyPatternWindowSegs(pid){
@@ -2061,6 +2100,12 @@ function patternWindowCardHtml(p){
       <td><input class="num num-compact" type="number" step="0.05" min="0.05" id="pwseg-gain-${pid}-${esc(s.segUid)}" value="${o.gain??1}" ${yTemp?'disabled':''}></td>
     </tr>`;
   }).join('');
+  const filesInPat=[...new Map(segs.map(({f})=>[f.id,f])).values()]; // unique files (series) in this window
+  const mainRows=filesInPat.map(f=>{const fo=winFileOverride(st,f.fuid);return `<tr>
+      <td><div class="seg-meta">${esc(f.name.replace(/\.[^.]+$/,''))}</div></td>
+      <td><input class="num num-offset" type="number" step="0.05" id="pwmain-xoff-${pid}-${f.id}" value="${fo.mainXOffset||0}"></td>
+      <td><input class="num num-offset" type="number" step="0.05" id="pwmain-yoff-${pid}-${f.id}" value="${fo.mainYOffset||0}"></td>
+    </tr>`;}).join('');
   return `<div class="panel pw-card" id="pwcard_${pid}">
     <div class="pw-head">
       <div class="ptitle" style="margin:0">▣ ${esc(p.name||'Pattern')} <span style="color:var(--text3);font-weight:400;font-size:11px">(${segs.length} seg)</span></div>
@@ -2087,6 +2132,8 @@ function patternWindowCardHtml(p){
       <input class="num" id="pwspan-ymax-${pid}" placeholder="y max" value="${Number.isFinite(w.view.yMax)?w.view.yMax:''}">
       <button class="btn" onclick="applyPatternWindowSpan('${esc(pid)}')">Apply</button>
     </div>
+    ${segs.length?`<div class="pw-segtable"><div class="mini" style="margin:2px 0 2px">Series main offset (各ステップに加算)</div><table class="seg-table"><thead><tr><th>Series (file)</th><th>Main Off X</th><th>Main Off Y</th></tr></thead><tbody>${mainRows}</tbody></table>
+      <div class="btn-row" style="margin:6px 0"><button class="btn" onclick="applyPatternWindowMain('${esc(pid)}')">Apply main</button></div></div>`:''}
     ${segs.length?`<div class="pw-segtable"><table class="seg-table"><thead><tr><th>Label</th><th>Color</th><th>Offset X</th><th>Offset Y</th><th>Gain</th></tr></thead><tbody>${segRows}</tbody></table>
       <div class="btn-row" style="margin-top:6px"><button class="btn" onclick="applyPatternWindowSegs('${esc(pid)}')">Apply per-segment</button></div></div>`:''}
   </div>`;
@@ -2249,6 +2296,7 @@ function renderOuterChart(){
 }
 function renderOuterSidebarHtml(sel){
   const yIsTemp=outerYAxis==='temp';
+  const filesInSel=[...new Map(sel.map(({f})=>[f.id,f])).values()]; // unique files (series) among displayed segments
   const showAllOn=outerShowAllSegments;
   const unifyFileColor=showAllOn&&yIsTemp;
   const segTitle=showAllOn?'Displayed Segments (All)':'Selected Segments';
@@ -2318,6 +2366,20 @@ function renderOuterSidebarHtml(sel){
       <div class="acc-body ${outerAcc.segments?'':'closed'}">
       <div class="lbl">${segTitle}</div>
       <div class="mini" style="margin-bottom:3px">${segHint}</div>
+      <div class="lbl" style="margin-top:6px">Series main offset</div>
+      <div class="mini" style="margin-bottom:3px">ファイル(シリーズ)単位の offset。下の各ステップの Offset X/Y に加算されます。</div>
+      ${filesInSel.length?`<div class="seg-table-wrap"><table class="seg-table">
+        <thead><tr><th>Series (file)</th><th>Main Off X</th><th>Main Off Y</th></tr></thead>
+        <tbody>
+      ${filesInSel.map(f=>`
+          <tr title="${esc(f.name.replace(/\.[^.]+$/,''))}">
+            <td><div class="seg-meta">${esc(f.name.replace(/\.[^.]+$/,''))}</div></td>
+            <td><input class="num num-offset" type="number" step="0.05" id="omain-xoff-${f.id}" value="${f.outerMainXOffset||0}"></td>
+            <td><input class="num num-offset" type="number" step="0.05" id="omain-yoff-${f.id}" value="${f.outerMainOffset||0}"></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`:''}
+      <div class="lbl" style="margin-top:6px">Per-step sub offset</div>
       <div class="seg-table-wrap">
       <table class="seg-table">
         <thead>
@@ -2345,7 +2407,7 @@ function renderOuterSidebarHtml(sel){
         </tbody>
       </table>
       </div>
-      <div class="btn-row" style="margin-top:6px"><button class="btn" onclick="applyOuterSegments()">Apply</button></div>
+      <div class="btn-row" style="margin-top:6px"><button class="btn" onclick="applyOuterAll()" title="Series main offset と per-step sub offset の両方を反映">Apply</button></div>
       </div>
     </div>`;
 }
@@ -2394,8 +2456,28 @@ function autoOffsetOuter(){
 }
 function resetOuterOffsets(){
   const sel=outerSegsForChart();if(!sel.length)return;
-  sel.forEach(({s})=>{s.outerOffset=0;s.outerXOffset=0;s.outerGain=1;});
-  toast('Offsets & gains reset');
+  const seen=new Set();
+  sel.forEach(({s,f})=>{s.outerOffset=0;s.outerXOffset=0;s.outerGain=1;if(!seen.has(f.id)){seen.add(f.id);f.outerMainXOffset=0;f.outerMainOffset=0;}});
+  toast('Main/sub offsets & gains reset');
+  renderOuterChart();
+}
+// Read the per-file (series) main-offset inputs and store them on each displayed file.
+function applyOuterMainOffsets(skipRender){
+  const seen=new Set();
+  outerSegsForChart().forEach(({f})=>{
+    if(seen.has(f.id))return;seen.add(f.id);
+    const xEl=document.getElementById(`omain-xoff-${f.id}`);
+    const yEl=document.getElementById(`omain-yoff-${f.id}`);
+    if(xEl){const n=parseFloat(xEl.value);f.outerMainXOffset=isNaN(n)?0:n;}
+    if(yEl){const n=parseFloat(yEl.value);f.outerMainOffset=isNaN(n)?0:n;}
+  });
+  if(!skipRender)renderOuterChart();
+}
+// Single "Apply" for the segments card — commits BOTH the series main offset and the per-step sub
+// offsets in one pass, so a typed value is never lost no matter which table the user edited.
+function applyOuterAll(){
+  applyOuterMainOffsets(true);
+  applyOuterSegments(true);
   renderOuterChart();
 }
 function toggleOuterLegend(){outerShowLegend=!outerShowLegend;renderOuterChart();}
@@ -2405,7 +2487,7 @@ function applyOuterSpan(){
   const xMin=parseFloat(document.getElementById('oxMin').value),xMax=parseFloat(document.getElementById('oxMax').value),yMin=parseFloat(document.getElementById('oyMin').value),yMax=parseFloat(document.getElementById('oyMax').value);
   outerView={xMin:isNaN(xMin)?null:xMin,xMax:isNaN(xMax)?null:xMax,yMin:isNaN(yMin)?null:yMin,yMax:isNaN(yMax)?null:yMax};renderOuterChart();
 }
-function applyOuterSegments(){
+function applyOuterSegments(skipRender){
   outerSegsForChart().forEach(({f,s})=>{
     const labelEl=document.getElementById(`oseg-label-${f.id}-${s.idx}`);
     const colorEl=document.getElementById(`oseg-color-${f.id}-${s.idx}`);
@@ -2420,7 +2502,7 @@ function applyOuterSegments(){
       gain:gainEl&&!gainEl.disabled?gainEl.value:undefined
     });
   });
-  renderOuterChart();
+  if(!skipRender)renderOuterChart();
 }
 function zoomOuter(axis,factor){
   if(!outerChart)return;const sx=outerChart.scales.x,sy=outerChart.scales.y;
@@ -2453,7 +2535,9 @@ function serializeProject(){
     patterns:{list:patternList.map(p=>({...p,segUids:[...(p.segUids||[])]})),activePatternId,
       windows:Object.fromEntries(patternList.filter(p=>patternWindows[p.id]).map(p=>[p.id,{open:!!patternWindows[p.id].open,state:patternWindows[p.id].state,view:patternWindows[p.id].view}]))},
     files:files.map(f=>({
-      id:f.id,name:f.name,color:f.color,meta:f.meta,data:f.data,
+      id:f.id,fuid:f.fuid,name:f.name,color:f.color,meta:f.meta,data:f.data,
+      outerMainXOffset:isFinite(f.outerMainXOffset)?f.outerMainXOffset:0,
+      outerMainOffset:isFinite(f.outerMainOffset)?f.outerMainOffset:0,
       chartScale:f.chartScale,sidebarOpen:f.sidebarOpen,chartOpen:f.chartOpen!==false,mode:f.mode,
       dscX:f.dscX,dscY:f.dscY,view:f.view,
       segments:f.segments.map(s=>({...s}))
@@ -2463,6 +2547,10 @@ function serializeProject(){
 function serializeDataOnly(){return{version:3,kind:'heatflow_tempdep_timedep',savedAt:new Date().toISOString(),files:files.map(f=>({name:f.name,meta:f.meta,data:f.data}))};}
 function hydrateProject(payload,{replace=true,dataOnly=false}={}){
   if(!payload||!Array.isArray(payload.files)){alert('Invalid JSON format');return;}
+  // Ensure every file has a stable fuid. Window main offsets used to be keyed by f.id, which is
+  // reassigned on load — so build oldId→fuid to migrate legacy projects without losing the offsets.
+  const oldFileIdToFuid={};
+  payload.files.forEach(src=>{if(!src)return;if(!src.fuid)src.fuid=newUid();oldFileIdToFuid[src.id]=src.fuid;});
   if(replace){files.forEach(f=>{if(f.chart)f.chart.destroy();});files=[];}
   if(!dataOnly){
     outerSidebarOpen=payload.outer?.outerSidebarOpen??outerSidebarOpen;
@@ -2485,7 +2573,7 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
     Object.values(patternWindows).forEach(w=>{if(w.chart)w.chart.destroy();});
     patternWindows={};
     const savedWins=pat?.windows||{};
-    patternList.forEach(p=>{const sv=savedWins[p.id];if(sv){const w=getPatternWindow(p.id);w.open=!!sv.open;w.state={...defaultWindowState(),...(sv.state||{})};if(!w.state.overrides)w.state.overrides={};if(sv.view&&typeof sv.view==='object')w.view={xMin:sv.view.xMin??null,xMax:sv.view.xMax??null,yMin:sv.view.yMin??null,yMax:sv.view.yMax??null};}});
+    patternList.forEach(p=>{const sv=savedWins[p.id];if(sv){const w=getPatternWindow(p.id);w.open=!!sv.open;w.state={...defaultWindowState(),...(sv.state||{})};if(!w.state.overrides)w.state.overrides={};if(!w.state.fileOverrides)w.state.fileOverrides={};{const _m={};for(const k in w.state.fileOverrides){const nk=(k in oldFileIdToFuid)?oldFileIdToFuid[k]:k;_m[nk]=w.state.fileOverrides[k];}w.state.fileOverrides=_m;}if(sv.view&&typeof sv.view==='object')w.view={xMin:sv.view.xMin??null,xMax:sv.view.xMax??null,yMin:sv.view.yMin??null,yMax:sv.view.yMax??null};}});
   }
   payload.files.forEach((src,idx)=>{
     const id=nextFid++;const rows=Array.isArray(src.data)?src.data:[];if(!rows.length)return;
@@ -2504,8 +2592,10 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
       outerLabel:typeof s.outerLabel==='string'?s.outerLabel:''
     }));
     files.push({
-      id,name:src.name||`loaded_${idx+1}.txt`,
+      id,fuid:src.fuid||newUid(),name:src.name||`loaded_${idx+1}.txt`,
       color:src.color||FC[(files.length)%FC.length],
+      outerMainXOffset:isFinite(src.outerMainXOffset)?src.outerMainXOffset:0,
+      outerMainOffset:isFinite(src.outerMainOffset)?src.outerMainOffset:0,
       meta:src.meta||{},data:rows,segments,chart:null,
       sidebarOpen:src.sidebarOpen!==false,
       chartOpen:src.chartOpen!==false,

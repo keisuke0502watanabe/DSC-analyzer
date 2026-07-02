@@ -1,1 +1,3 @@
 .DS_Store
+# Local measurement data (large, not part of the app)
+data/
