@@ -713,6 +713,29 @@ function runEnvironmentChecks(){
   box.classList.add('app-notice--on');
   try{console.warn('[DSC env]',lines.join(' | '));}catch(_e){}
 }
+/** 永続バナーに1行追記（runEnvironmentChecks の後に使う）。 */
+function appNoticeAdd(line){
+  const box=document.getElementById('appNotice');if(!box)return;
+  box.textContent=box.textContent?box.textContent+'\n\n'+line:line;
+  box.classList.add('app-notice--on');
+  try{console.warn('[DSC storage]',line);}catch(_e){}
+}
+/** IndexedDB を永続化（durable）にするよう要求し、ベストエフォートのままで
+    未バックアップのキャッシュがある場合は自動削除リスクを警告する。 */
+async function ensureStoragePersisted(){
+  try{
+    let persisted=false;
+    if(navigator.storage&&navigator.storage.persisted){
+      try{persisted=await navigator.storage.persisted();}catch(_e){}
+      if(!persisted&&navigator.storage.persist){try{persisted=await navigator.storage.persist();}catch(_e){}}
+    }
+    const hasData=Array.isArray(dbFileCache)&&dbFileCache.length>0;
+    const backupOn=!!(typeof autoBackup!=='undefined'&&autoBackup&&autoBackup.state==='on');
+    if(!persisted&&hasData&&!backupOn){
+      appNoticeAdd('ブラウザのストレージが「ベストエフォート」設定のため、ディスク逼迫時やプライベートウィンドウでは DB キャッシュ（'+dbFileCache.length+' 件）が自動削除されることがあります。データ保護のため、ローカルフォルダへの自動バックアップ有効化、または DB エクスポートを推奨します。');
+    }
+  }catch(_e){}
+}
 function toggleSidebar(){sidebarOpen=!sidebarOpen;document.getElementById('dbSidebar').classList.toggle('collapsed',!sidebarOpen);}
 let dbLayout='sidebar'; // 'sidebar' | 'top'
 function setDbLayout(v){
@@ -2950,6 +2973,7 @@ async function dupFinderDeleteSelected(){
   try{await autoBackup.restoreOnStartup();}catch(e){console.error(e);}
   if(typeof indexedDB==='undefined')toast('IndexedDB 非対応: DB キャッシュは使えません','err');
   try{await refreshDbPanels();}catch(e){console.error(e);toast('DB init: '+(e.message||e),'err');}
+  try{await ensureStoragePersisted();}catch(e){console.error(e);}
   try{renderOuterChart();}catch(e){console.error(e);toast('Chart init: '+(e.message||e),'err');}
 })();
 </script>
