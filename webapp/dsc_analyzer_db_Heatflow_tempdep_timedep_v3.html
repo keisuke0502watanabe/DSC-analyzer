@@ -2708,7 +2708,7 @@ async function buildFullDbPayload(){
   ]);
   const cachedNames=new Set((allFiles||[]).map(f=>f.name).filter(Boolean));
   const projects=(allProjects||[]).map(p=>slimDbProjectRecord(p,cachedNames));
-  return {version:2,exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles||[],projects,projectsSlimmed:true};
+  return {version:2,app:'dsc',exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles||[],projects,projectsSlimmed:true};
 }
 async function exportFullDb(){
   try{
@@ -2844,6 +2844,7 @@ async function importFullDb(file){
     try{
       const payload=JSON.parse(r.result);
       if(!Array.isArray(payload.files)||!Array.isArray(payload.projects))throw new Error('Invalid DB dump format');
+      if(payload.app&&payload.app!=='dsc')throw new Error(`これは "${payload.app}" の DB dump のようです（DSC のものではありません）。DB破損を避けるため読み込みを中止しました。`);
       const fc=payload.files.length,pc=payload.projects.length;
       const exportedAt=payload.exportedAt?new Date(payload.exportedAt).toLocaleString():'不明';
       const msg=`DB dump を読み込みます\n\nExport日時: ${exportedAt}\nFiles: ${fc} 件 / Projects: ${pc} 件\n\nOK = 上書き（既存データを全削除）\nキャンセル = マージ確認へ`;
