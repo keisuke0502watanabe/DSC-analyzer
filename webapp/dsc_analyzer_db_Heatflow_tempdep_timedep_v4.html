@@ -512,6 +512,18 @@ canvas{width:100%;height:100%}
   </div>
 </div>
 
+<div class="modal-bg" id="teEditModal" style="z-index:950" onclick="if(event.target===this)closeTeEdit()">
+  <div class="modal" style="min-width:340px;max-width:96vw;max-height:92vh;overflow:auto">
+    <h3>Edit feature</h3>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:.5rem">Edit annotations and values. ΔS is recomputed from ΔH and the onset temperature on save. Edited records are flagged (method → manual-edited).</div>
+    <div id="teEditBody"></div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:.8rem;gap:6px">
+      <button class="btn" onclick="closeTeEdit()">Cancel</button>
+      <button class="btn green" onclick="saveTeEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="fileMetaEditModal" onclick="if(event.target===this)closeFileMetaEdit()">
   <div class="modal">
     <h3>Edit file metadata</h3>
@@ -2216,7 +2228,7 @@ function renderThermalDb(){
       ev.sampleMass_mg!=null?ev.sampleMass_mg:'—',ev.integrationAxis||'—',ev.method||'—',
       esc((ev.fileName||'').replace(/\.[^.]+$/,'')),teDateStr(ev)
     ].map(c=>`<td style="padding:2px 6px;white-space:nowrap">${c}</td>`).join('');
-    return `<tr>${cells}<td style="padding:2px 6px"><button class="btn" style="padding:0 6px" onclick="teDeleteEvent(${ev.id})" title="Delete">✕</button></td></tr>`;
+    return `<tr>${cells}<td style="padding:2px 6px;white-space:nowrap"><button class="btn" style="padding:0 6px" onclick="openTeEdit(${ev.id})" title="Edit">✎</button> <button class="btn" style="padding:0 6px" onclick="teDeleteEvent(${ev.id})" title="Delete">✕</button></td></tr>`;
   }).join('');
   document.getElementById('teBody').innerHTML=rows.length
     ?`<table style="border-collapse:collapse;font-size:11px;width:100%"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
@@ -2249,6 +2261,58 @@ async function teDeleteEvent(id){
     Object.values(analysisState).forEach(a=>{a.events=null;});
     renderThermalDb();toast('Deleted','ok');}
   catch(e){toast('Delete failed: '+e.message,'err');}
+}
+// ── Edit a saved feature (annotations + values). ΔS is recomputed from ΔH & onset on save. ──
+let teEditId=null;
+function teEditRow(label,id,val,type='number',step='0.01'){
+  const attrs=type==='number'?`type="number" step="${step}"`:'type="text"';
+  return `<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><label class="mini" style="width:150px">${label}</label><input class="num" id="${id}" ${attrs} style="flex:1" value="${val==null?'':(type==='text'?esc(String(val)):val)}"></div>`;
+}
+function openTeEdit(id){
+  const ev=teAllEvents.find(e=>e.id===id);if(!ev){toast('Not found','err');return;}
+  teEditId=id;
+  const typeSel=`<div style="display:flex;align-items:center;gap:6px;margin:3px 0"><label class="mini" style="width:150px">Type</label>
+    <select class="num" id="teEd_eventType" style="flex:1">
+      ${['melt','crystallization','transition','glass_transition'].map(t=>`<option value="${t}" ${ev.eventType===t?'selected':''}>${EVENT_LABELS[t]}</option>`).join('')}
+    </select></div>`;
+  document.getElementById('teEditBody').innerHTML=
+    teEditRow('Sample name','teEd_sampleName',ev.sampleName,'text')+
+    teEditRow('Label','teEd_label',ev.label,'text')+
+    typeSel+
+    teEditRow('T onset (°C)','teEd_T_onset',ev.T_onset)+
+    teEditRow('T peak / Tg mid (°C)','teEd_T_peak',ev.T_peak)+
+    teEditRow('T endset (°C)','teEd_T_endset',ev.T_endset)+
+    teEditRow('ΔH (J/g) — melt/cryst/transition','teEd_deltaH_Jg',ev.deltaH_Jg,'number','0.1')+
+    teEditRow('ΔCp (J/(g·K)) — Tg','teEd_deltaCp_JgK',ev.deltaCp_JgK,'number','0.001')+
+    teEditRow('Sample mass (mg)','teEd_sampleMass_mg',ev.sampleMass_mg,'number','0.001')+
+    `<div class="mini" style="color:var(--text3);margin-top:4px">File: ${esc((ev.fileName||'—'))} · saved ${teDateStr(ev)}</div>`;
+  document.getElementById('teEditModal').classList.add('show');
+}
+function closeTeEdit(){document.getElementById('teEditModal').classList.remove('show');teEditId=null;}
+async function saveTeEdit(){
+  const ev=teAllEvents.find(e=>e.id===teEditId);if(!ev){closeTeEdit();return;}
+  const numOf=id=>{const v=document.getElementById(id).value.trim();if(v==='')return null;const n=parseFloat(v);return isFinite(n)?n:null;};
+  const txtOf=id=>document.getElementById(id).value.trim();
+  const eventType=document.getElementById('teEd_eventType').value;
+  const T_onset=numOf('teEd_T_onset'),T_peak=numOf('teEd_T_peak'),T_endset=numOf('teEd_T_endset');
+  const mass=numOf('teEd_sampleMass_mg');
+  const upd={...ev,sampleName:txtOf('teEd_sampleName'),label:txtOf('teEd_label'),eventType,
+    T_onset,T_peak,T_endset,sampleMass_mg:mass,method:'manual-edited',editedAt:new Date().toISOString()};
+  if(eventType==='glass_transition'){
+    upd.deltaCp_JgK=numOf('teEd_deltaCp_JgK');upd.Tg_mid=T_peak;
+    upd.deltaH_Jg=null;upd.deltaH_raw_mJ=null;upd.deltaS_JgK=null;upd.Tm_K_used=null;
+  }else{
+    const dH=numOf('teEd_deltaH_Jg');upd.deltaH_Jg=dH;upd.deltaCp_JgK=null;upd.Tg_mid=null;
+    const TmC=(T_onset!=null?T_onset:T_peak);                   // ΔS uses onset (equilibrium-melting convention)
+    upd.Tm_K_used=(TmC!=null)?TmC+273.15:null;
+    upd.deltaS_JgK=(dH!=null&&upd.Tm_K_used)?dH/upd.Tm_K_used:null;
+  }
+  try{
+    await adapter.saveEvent(upd);                              // has id → put replaces the row
+    teAllEvents=await adapter.listEvents();
+    Object.values(analysisState).forEach(a=>{a.events=null;}); // open file panels reload from store
+    renderThermalDb();closeTeEdit();toast('Saved','ok');
+  }catch(e){toast('Save failed: '+e.message,'err');}
 }
 function exportThermalDbCsv(){
   const rows=teFilteredSorted();
