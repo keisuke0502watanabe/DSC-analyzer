@@ -131,6 +131,11 @@ heating の融解は吸熱前提で `endoSign` を自動推定。誤りはファ
   - 「特徴量DB」モーダル: 全イベントを横断表示。フィルタ（種別 / Sample部分一致 / T範囲）、並べ替え（測定日・T・ΔH・Sample）、種別で表示分岐（融解/結晶化=Tm/ΔH/ΔS、Tg=Tg_mid/ΔCp）、行削除、CSV出力（BOM付き）。
   - 校正ドリフト監視: プロット ON で「測定日 × 選択量(T/ΔH/ΔCp/ΔS)」の散布図（Sample別に系列化）。Indium/decaneで絞ればドリフトを可視化（検証で INDIUM T_peak 157.3→158.0 の上昇を確認）。測定日は files キャッシュの measEpoch を結合（無ければ computedAt）。
   - 残（follow-on）: `.ds8d` からPyrisスカラー(onset/peak/area/ΔH)を一括抽出して校正データを自動投入するインポータ（283本活用）。曲線パースは不要だが結果オブジェクトのフィールド配置REが必要。
+- **Phase 5 ✅ 完了**（ファイル名を `webapp/dsc_analyzer_v4.html` に短縮）: 解析結果の**版管理**（後から修正可・複数保持・解析当時のベースライン/面積をいつでも再現）。**スキーマ変更なし**（既存 `baselinePoints`/`integ_xMin/xMax`/`integrationAxis`/`endoSign`/`segUid`/`computedAt` を活用）。
+  - **版としてグループ化**: 保存イベント一覧を `segUid|eventType|label` でグルーピングし v1/v2/… と表示。各版に解析日時（computedAt）・値・latest 印・[👁表示][↻再解析][✕削除]。ベースライン違いの再解析は同一グループ内の別版として蓄積（「Save this feature」は常に新規行 → 上書きしない）。
+  - **オーバーレイ再現**: `reconstructEventResult()` が保存済み `baselinePoints`+`endoSign` から `extractPeak`/`extractGlass` を再実行 → 当時のベースライン/積分領域/onset·peak·endset を復元。`appendAnalysisOverlay` を `pushOverlay(f,ds,r,bl,opt)` に分離し、ライブ（橙）と閲覧中の保存版（シアン・読み取り専用）を重畳描画。積分軸が違えば表示前に `f.dscX` を保存時の軸へ切替。
+  - **再解析**: `reanalyzeSavedEvent()` が保存版の segment/baseline/axis/endo/type/label をワークベンチに復元 → 微調整して Save で新版追加（元は保持）。数値直接編集（`openTeEdit`）も従来どおり併存。特徴量DB表に「Analyzed」列（computedAt）を追加。
+  - 検証: 抽出した実関数で合成ガウスピーク（既知 ΔH=120.3 J/g）を保存→`reconstructEventResult` 復元で T_peak/T_onset/ΔH が**ビット一致**、ΔH は既知値に ≤0.5 J/g 一致、グループキーはベースライン変更でも不変を Node ヘッドレスで確認。構文チェック通過。ブラウザ実機UI確認は環境のブラウザ無応答のため未実施。
 
 ## 検証（Phase 1）
 - 単位換算の厳密性: 合成ガウスピーク（既知 ΔH=120.3 J/g）で **温度軸/時間軸とも ΔHm=120.32 J/g** に一致（`∫dT/β` と `∫dt×60` の整合を確認）。Tonset/Tpeak/Tendset も期待値と一致。

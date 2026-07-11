@@ -1864,7 +1864,8 @@ function fmt(v,d){return isFinite(v)?(+v).toFixed(d):'';}
 const analysisState={};
 const EVENT_LABELS={melt:'Melting (melt)',crystallization:'Crystallization (cryst)',transition:'Transition (transition)',glass_transition:'Glass transition (Tg)'};
 function getAnalysis(f){
-  if(!analysisState[f.id])analysisState[f.id]={open:false,eventType:'melt',segIdx:null,endo:'auto',bl:[null,null],pick:0,result:null,events:null,loading:false,label:''};
+  if(!analysisState[f.id])analysisState[f.id]={open:false,eventType:'melt',segIdx:null,endo:'auto',bl:[null,null],pick:0,result:null,events:null,loading:false,label:'',
+    viewEventId:null,viewResult:null,viewBl:null};
   return analysisState[f.id];
 }
 // Sample mass in mg — cache record (reflects meta edits) first, then parsed header. Needed for J/g.
@@ -2103,21 +2104,48 @@ function analysisCardHtml(f){
       <div class="btn-row" style="margin-top:5px">
         <button class="btn on" onclick="saveAnalysisEvent(${f.id})" ${r?'':'disabled'}>Save this feature</button>
       </div>
-      <div class="lbl" style="margin-top:6px">Saved events</div>
+      <div class="lbl" style="margin-top:6px">Saved analyses <span class="mini" style="font-weight:400;color:var(--text3)">(👁 show baseline/area · ↻ re-analyze → new version · ✕ delete)</span></div>
       <div class="mini" id="evlist-${f.id}">${evLoaded?renderEventListHtml(f,a.events):'<em>loading…</em>'}</div>
       </div>
     </div>`;
 }
+// Identity of a "peak": analyses that differ only by baseline stay in the same group (= versions of one measurement).
+function evGroupKey(ev){return `${ev.segUid||ev.segIdx||'?'}|${ev.eventType}|${(ev.label||'').trim()}`;}
+function evTime(ev){const t=Date.parse(ev.computedAt||ev.savedAt||'');return isFinite(t)?t:0;}
+function evComputedStr(ev){
+  const t=evTime(ev);if(!t)return '—';const d=new Date(t),p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// Saved events grouped as versions of the same peak. Each version shows its analysis date + view/re-analyze/delete.
 function renderEventListHtml(f,events){
   if(!events||!events.length)return '<em>none</em>';
-  return events.map(ev=>{
-    const detail=ev.eventType==='glass_transition'
-      ?`Tg ${ev.Tg_mid!=null?(+ev.Tg_mid).toFixed(1):'—'}°C, ΔCp ${ev.deltaCp_JgK!=null?(+ev.deltaCp_JgK).toFixed(3):'—'} J/(g·K)`
-      :`Tp ${ev.T_peak!=null?(+ev.T_peak).toFixed(1):'—'}°C, ΔH ${ev.deltaH_Jg!=null?(+ev.deltaH_Jg).toFixed(1):'—'} J/g`;
-    return `<div style="display:flex;justify-content:space-between;gap:4px;padding:2px 0;border-bottom:1px solid var(--border,#2a2a2a)">
-    <span>${EVENT_LABELS[ev.eventType]||ev.eventType}${ev.label?` «${esc(ev.label)}»`:''}: ${detail}</span>
-    <button class="btn" style="padding:0 6px" onclick="deleteThermalEvent(${ev.id},${f.id})" title="Delete">✕</button>
-  </div>`;}).join('');
+  const a=getAnalysis(f);
+  const groups=new Map();
+  events.forEach(ev=>{const k=evGroupKey(ev);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(ev);});
+  const parts=[];
+  for(const evs of groups.values()){
+    evs.sort((x,y)=>evTime(x)-evTime(y));                     // oldest → newest = v1, v2, …
+    const head=evs[0];
+    const title=`${EVENT_LABELS[head.eventType]||head.eventType}${head.label?` «${esc(head.label)}»`:''}`;
+    const rows=evs.map((ev,i)=>{
+      const detail=ev.eventType==='glass_transition'
+        ?`T<sub>g</sub> ${ev.Tg_mid!=null?(+ev.Tg_mid).toFixed(1):'—'}°C · ΔC<sub>p</sub> ${ev.deltaCp_JgK!=null?(+ev.deltaCp_JgK).toFixed(3):'—'}`
+        :`T<sub>p</sub> ${ev.T_peak!=null?(+ev.T_peak).toFixed(1):'—'}°C · ΔH ${ev.deltaH_Jg!=null?(+ev.deltaH_Jg).toFixed(1):'—'} J/g`;
+      const viewing=a.viewEventId===ev.id,latest=i===evs.length-1;
+      return `<div style="display:flex;justify-content:space-between;gap:4px;align-items:center;padding:2px 0 2px 8px;border-bottom:1px solid var(--border,#2a2a2a)${viewing?';background:rgba(64,196,196,0.14)':''}">
+        <span style="min-width:0">
+          <span class="mini" style="color:var(--text3)">v${i+1}${latest?' <span style="color:#3dba7e">latest</span>':''} · ${evComputedStr(ev)}${ev.editedAt?' <span title="manually edited">✎</span>':''}</span><br>${detail}
+        </span>
+        <span style="white-space:nowrap;display:flex;gap:2px">
+          <button class="btn ${viewing?'on':''}" style="padding:0 5px" onclick="viewSavedEvent(${ev.id},${f.id})" title="Show this analysis' baseline &amp; area on the chart">👁</button>
+          <button class="btn" style="padding:0 5px" onclick="reanalyzeSavedEvent(${ev.id},${f.id})" title="Load into the workbench to re-analyze (Save adds a new version, keeps this one)">↻</button>
+          <button class="btn" style="padding:0 5px" onclick="deleteThermalEvent(${ev.id},${f.id})" title="Delete this version">✕</button>
+        </span>
+      </div>`;
+    }).join('');
+    parts.push(`<div style="margin:4px 0"><div class="mini" style="font-weight:600">${title} <span style="color:var(--text3)">(${evs.length} ${evs.length>1?'versions':'version'})</span></div>${rows}</div>`);
+  }
+  return parts.join('');
 }
 async function refreshFileEvents(f){
   const a=getAnalysis(f);
@@ -2171,8 +2199,53 @@ async function saveAnalysisEvent(fid){
 }
 async function deleteThermalEvent(eventId,fid){
   const f=findFile(fid);if(!f)return;
-  try{await adapter.deleteEvent(eventId);toast('Event deleted','ok');const a=getAnalysis(f);a.events=null;await refreshFileEvents(f);}
+  try{await adapter.deleteEvent(eventId);toast('Version deleted','ok');
+    const a=getAnalysis(f);if(a.viewEventId===eventId){a.viewEventId=null;a.viewResult=null;a.viewBl=null;}
+    a.events=null;await refreshFileEvents(f);rerenderAnalysis(f);}
   catch(e){toast('Delete failed: '+e.message,'err');}
+}
+// ── Re-visit a saved analysis: rebuild its overlay from stored provenance, deterministically from the raw waveform ──
+// Resolve the segment an event was computed on (segUid is stable across DB round-trips; fall back to segIdx).
+function segForEvent(f,ev){const segs=f.segments||[];return segs.find(s=>s.segUid&&s.segUid===ev.segUid)||segs.find(s=>s.idx===ev.segIdx)||null;}
+// Rebuild the full result (baseline / area / onset·peak·endset) by re-running the same extractor on the stored baseline.
+// Requires the chart X axis to equal the event's integrationAxis (baseline x-values are in that axis' units) — callers switch first.
+function reconstructEventResult(f,ev){
+  const s=segForEvent(f,ev);if(!s)return null;
+  const bp=ev.baselinePoints;if(!Array.isArray(bp)||bp.length<2)return null;
+  const bl=[{x:+bp[0].x,y:+bp[0].y},{x:+bp[1].x,y:+bp[1].y}];
+  const endo=ev.endoSign>0?1:ev.endoSign<0?-1:null;
+  const r=ev.eventType==='glass_transition'?extractGlass(f,s,bl,endo):extractPeak(f,s,bl,endo);
+  return r?{r,bl}:null;
+}
+// Toggle a read-only overlay of a saved analysis on the chart (cyan), so the baseline/area at analysis time is always inspectable.
+function viewSavedEvent(eventId,fid){
+  const f=findFile(fid);if(!f)return;const a=getAnalysis(f);
+  if(a.viewEventId===eventId){a.viewEventId=null;a.viewResult=null;a.viewBl=null;rerenderAnalysis(f);return;}
+  const ev=(a.events||[]).find(e=>e.id===eventId);if(!ev){toast('Not found','err');return;}
+  const ax=ev.integrationAxis==='temp'?'temp':'time',axisChanged=f.dscX!==ax;
+  if(axisChanged){f.dscX=ax;f.view={xMin:null,xMax:null,yMin:null,yMax:null};a.bl=[null,null];a.result=null;a.pickActive=false;}
+  const rc=reconstructEventResult(f,ev);
+  if(!rc){toast('Cannot rebuild overlay (segment/data missing)','err');return;}
+  a.viewEventId=eventId;a.viewResult=rc.r;a.viewBl=rc.bl;
+  fileAcc[f.id]=fileAcc[f.id]||{};fileAcc[f.id].analysis=true;
+  if(axisChanged)renderFileOuters();else rerenderAnalysis(f);
+}
+// Load a saved analysis back into the live workbench so its baseline can be adjusted; Save then writes a NEW version.
+function reanalyzeSavedEvent(eventId,fid){
+  const f=findFile(fid);if(!f)return;const a=getAnalysis(f);
+  const ev=(a.events||[]).find(e=>e.id===eventId);if(!ev){toast('Not found','err');return;}
+  const ax=ev.integrationAxis==='temp'?'temp':'time',axisChanged=f.dscX!==ax;
+  if(axisChanged){f.dscX=ax;f.view={xMin:null,xMax:null,yMin:null,yMax:null};}
+  const s=segForEvent(f,ev);if(!s){toast('Segment not found','err');return;}
+  const bp=ev.baselinePoints||[];
+  a.eventType=ev.eventType;a.segIdx=s.idx;a.label=ev.label||'';
+  a.endo=ev.endoSign>0?'up':ev.endoSign<0?'down':'auto';
+  a.bl=(bp.length>=2)?[{x:+bp[0].x,y:+bp[0].y},{x:+bp[1].x,y:+bp[1].y}]:[null,null];
+  a.pick=0;a.pickActive=false;a.pickManual=true;a.viewEventId=null;a.viewResult=null;a.viewBl=null;
+  computeAnalysis(f);
+  fileAcc[f.id]=fileAcc[f.id]||{};fileAcc[f.id].analysis=true;
+  if(axisChanged)renderFileOuters();else rerenderAnalysis(f);
+  toast('Loaded into workbench — adjust the baseline, then Save to add a new version','ok');
 }
 
 // ════════════════════════════════════════════════
@@ -2218,7 +2291,7 @@ function renderThermalDb(){
   document.getElementById('tePlotCtl').style.display=plotOn?'':'none';
   document.getElementById('tePlotWrap').style.display=plotOn?'':'none';
   // table
-  const head=['Sample','Type','Label','T onset','T peak/Tg','T endset','ΔH J/g','ΔS mJ/gK','ΔCp J/gK','mass','Axis','method','File','Date',''];
+  const head=['Sample','Type','Label','T onset','T peak/Tg','T endset','ΔH J/g','ΔS mJ/gK','ΔCp J/gK','mass','Axis','method','File','Meas.date','Analyzed',''];
   const th=head.map(h=>`<th style="text-align:left;padding:2px 6px;border-bottom:1px solid var(--border2);white-space:nowrap">${h}</th>`).join('');
   const body=rows.map(ev=>{
     const cells=[
@@ -2226,7 +2299,7 @@ function renderThermalDb(){
       teFmt(ev.T_onset,2),teFmt(ev.T_peak,2),teFmt(ev.T_endset,2),
       teFmt(ev.deltaH_Jg,2),ev.deltaS_JgK!=null?teFmt(ev.deltaS_JgK*1000,2):'—',teFmt(ev.deltaCp_JgK,4),
       ev.sampleMass_mg!=null?ev.sampleMass_mg:'—',ev.integrationAxis||'—',ev.method||'—',
-      esc((ev.fileName||'').replace(/\.[^.]+$/,'')),teDateStr(ev)
+      esc((ev.fileName||'').replace(/\.[^.]+$/,'')),teDateStr(ev),evComputedStr(ev)
     ].map(c=>`<td style="padding:2px 6px;white-space:nowrap">${c}</td>`).join('');
     return `<tr>${cells}<td style="padding:2px 6px;white-space:nowrap"><button class="btn" style="padding:0 6px" onclick="openTeEdit(${ev.id})" title="Edit">✎</button> <button class="btn" style="padding:0 6px" onclick="teDeleteEvent(${ev.id})" title="Delete">✕</button></td></tr>`;
   }).join('');
@@ -2405,21 +2478,27 @@ function bindAnalysisDrag(canvas,f){
 // Overlay y-values are raw hf, so mirror the displayed segment's yGain/dOffset to stay aligned with the curve.
 function appendAnalysisOverlay(f,datasets){
   const a=analysisState[f.id];
-  if(!a||!a.result||f.dscY!=='heatflow')return;
-  const s=(f.segments||[]).find(x=>x.idx===a.result.segIdx);
+  if(!a||f.dscY!=='heatflow')return;
+  if(a.result&&a.bl&&a.bl[0]&&a.bl[1])pushOverlay(f,datasets,a.result,a.bl,null);          // live workbench (orange)
+  if(a.viewResult&&a.viewBl)pushOverlay(f,datasets,a.viewResult,a.viewBl,{ro:true,c:'#40c4c4',pre:'_v'}); // viewed saved version (cyan, read-only)
+}
+// Draw one analysis' overlay (baseline / integration area / markers). opt.ro = read-only saved version (distinct color, no drag).
+function pushOverlay(f,datasets,r,bl,opt){
+  opt=opt||{};const CL=opt.c||'#e8a040',PRE=opt.pre||'',rad=opt.ro?3:5;
+  const s=(f.segments||[]).find(x=>x.idx===r.segIdx);
   if(!s||!s.visible)return;
-  const r=a.result,disp=y=>y*(s.yGain||1)+(s.dOffset||0);
+  const disp=y=>y*(s.yGain||1)+(s.dOffset||0);
   if(r.kind==='glass'){                            // glass transition: pre/post baselines + onset/mid/endset markers
     const preAt=x=>r.preLine.c+r.preLine.m*x,postAt=x=>r.postLine.c+r.postLine.m*x;
-    const lo=r.region.lo,hi=r.region.hi;
-    datasets.push({label:'_prebl',data:[{x:lo,y:disp(preAt(lo))},{x:hi,y:disp(preAt(hi))}],borderColor:'#4a9eff',borderWidth:1.2,borderDash:[5,3],pointRadius:0,fill:false});
-    datasets.push({label:'_postbl',data:[{x:lo,y:disp(postAt(lo))},{x:hi,y:disp(postAt(hi))}],borderColor:'#4a9eff',borderWidth:1.2,borderDash:[5,3],pointRadius:0,fill:false});
-    datasets.push({label:'_handles',data:[{x:a.bl[0].x,y:disp(a.bl[0].y)},{x:a.bl[1].x,y:disp(a.bl[1].y)}],showLine:false,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:'#e8a040',pointBorderColor:'#fff',pointBorderWidth:1});
+    const lo=r.region.lo,hi=r.region.hi,blC=opt.ro?CL:'#4a9eff';
+    datasets.push({label:PRE+'_prebl',data:[{x:lo,y:disp(preAt(lo))},{x:hi,y:disp(preAt(hi))}],borderColor:blC,borderWidth:1.2,borderDash:[5,3],pointRadius:0,fill:false});
+    datasets.push({label:PRE+'_postbl',data:[{x:lo,y:disp(postAt(lo))},{x:hi,y:disp(postAt(hi))}],borderColor:blC,borderWidth:1.2,borderDash:[5,3],pointRadius:0,fill:false});
+    datasets.push({label:PRE+'_handles',data:[{x:bl[0].x,y:disp(bl[0].y)},{x:bl[1].x,y:disp(bl[1].y)}],showLine:false,pointRadius:rad,pointHoverRadius:7,pointBackgroundColor:opt.ro?CL:'#e8a040',pointBorderColor:'#fff',pointBorderWidth:1});
     const gm=[];
     if(r.onsetX!=null)gm.push({x:r.onsetX,y:disp(preAt(r.onsetX)),c:'#3dba7e'});
     if(r.midX!=null)gm.push({x:r.midX,y:disp(0.5*(preAt(r.midX)+postAt(r.midX))),c:'#e85a8a'});
     if(r.endsetX!=null)gm.push({x:r.endsetX,y:disp(postAt(r.endsetX)),c:'#3dba7e'});
-    datasets.push({label:'_markers',data:gm,showLine:false,pointRadius:5,pointBackgroundColor:gm.map(m=>m.c),pointBorderColor:'#fff',pointBorderWidth:1});
+    datasets.push({label:PRE+'_markers',data:gm,showLine:false,pointRadius:rad,pointBackgroundColor:gm.map(m=>m.c),pointBorderColor:'#fff',pointBorderWidth:1});
     return;
   }
   const {y1,y2,x1,x2}=r.blAtFn,blAt=x=>y1+(y2-y1)*(x-x1)/((x2-x1)||1);
@@ -2427,13 +2506,14 @@ function appendAnalysisOverlay(f,datasets){
   const reg=rows.map(rr=>({x:axis==='temp'?rr.temp:rr.time,y:rr.hf})).filter(p=>p.x>=r.region.lo&&p.x<=r.region.hi).sort((p,q)=>p.x-q.x);
   const blReg=reg.map(p=>({x:p.x,y:disp(blAt(p.x))}));
   const curveReg=reg.map(p=>({x:p.x,y:disp(p.y)}));
-  datasets.push({label:'_bl_region',data:blReg,borderColor:'rgba(232,160,64,0)',pointRadius:0,fill:false,order:0});
-  datasets.push({label:'_area',data:curveReg,borderColor:'rgba(232,160,64,0)',backgroundColor:'rgba(232,160,64,0.18)',pointRadius:0,fill:'-1',order:0});
-  datasets.push({label:'baseline',data:[{x:x1,y:disp(y1)},{x:x2,y:disp(y2)}],borderColor:'#e8a040',borderWidth:1.3,borderDash:[5,3],pointRadius:5,pointHoverRadius:7,pointBackgroundColor:'#e8a040',pointBorderColor:'#fff',pointBorderWidth:1,fill:false});
+  const fillC=opt.ro?'rgba(64,196,196,0.16)':'rgba(232,160,64,0.18)';
+  datasets.push({label:PRE+'_bl_region',data:blReg,borderColor:'rgba(0,0,0,0)',pointRadius:0,fill:false,order:0});
+  datasets.push({label:PRE+'_area',data:curveReg,borderColor:'rgba(0,0,0,0)',backgroundColor:fillC,pointRadius:0,fill:'-1',order:0});
+  datasets.push({label:PRE?PRE+'_baseline':'baseline',data:[{x:x1,y:disp(y1)},{x:x2,y:disp(y2)}],borderColor:CL,borderWidth:1.3,borderDash:[5,3],pointRadius:rad,pointHoverRadius:7,pointBackgroundColor:CL,pointBorderColor:'#fff',pointBorderWidth:1,fill:false});
   const marks=[{x:r.peak.x,y:disp(r.peak.y),c:'#e85a8a'}];
   if(r.onsetX!=null)marks.push({x:r.onsetX,y:disp(blAt(r.onsetX)),c:'#3dba7e'});
   if(r.endsetX!=null)marks.push({x:r.endsetX,y:disp(blAt(r.endsetX)),c:'#3dba7e'});
-  datasets.push({label:'_markers',data:marks,showLine:false,pointRadius:5,pointBackgroundColor:marks.map(m=>m.c),pointBorderColor:'#fff',pointBorderWidth:1});
+  datasets.push({label:PRE+'_markers',data:marks,showLine:false,pointRadius:rad,pointBackgroundColor:marks.map(m=>m.c),pointBorderColor:'#fff',pointBorderWidth:1});
 }
 // Click-to-place baseline endpoints while pick mode is active (independent of zoom/lock mode).
 function bindAnalysisPick(canvas,f){
@@ -2467,7 +2547,7 @@ function toggleFileSidebar(fid){const f=findFile(fid);if(!f)return;f.sidebarOpen
 function setFileMode(fid,mode){const f=findFile(fid);if(!f)return;f.mode=mode==='lock'?'lock':'zoom';renderFileOuters();}
 function setFileX(fid,mode){const f=findFile(fid);if(!f)return;const next=mode==='time'?'time':'temp';if(f.dscX===next)return;f.dscX=next;f.view={xMin:null,xMax:null,yMin:null,yMax:null};
   // Integration axis = X axis, so switching axes invalidates the baseline x-values. Clear the analysis state.
-  if(analysisState[fid]){analysisState[fid].bl=[null,null];analysisState[fid].result=null;analysisState[fid].pickActive=false;}
+  if(analysisState[fid]){const a=analysisState[fid];a.bl=[null,null];a.result=null;a.pickActive=false;a.viewEventId=null;a.viewResult=null;a.viewBl=null;}
   renderFileOuters();}
 function setFileY(fid,mode){const f=findFile(fid);if(!f)return;const next=mode==='temp'?'temp':'heatflow';if(f.dscY===next)return;f.dscY=next;f.view={xMin:null,xMax:null,yMin:null,yMax:null};renderFileOuters();}
 function setFileScale(fid,v){const f=findFile(fid);if(!f)return;const n=parseInt(v,10);f.chartScale=clamp(isNaN(n)?100:n,60,200);renderFileOuters();}
