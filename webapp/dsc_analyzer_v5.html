@@ -124,6 +124,11 @@ code,input[type=number],input[type=text],.mono{font-family:'IBM Plex Mono',monos
 .qual-chip{font-size:9px;padding:2px 6px;border-radius:10px;background:var(--bg);border:1px solid var(--border2);color:var(--text3);cursor:pointer;font-family:'IBM Plex Mono',monospace}
 .qual-chip:hover{border-color:var(--accent)}
 .qual-chip.on{background:#e8a040;border-color:#e8a040;color:#1a1a1a}
+.scan-badges{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px}
+.scan-badge{font-size:9px;padding:1px 6px;border-radius:10px;font-family:'IBM Plex Mono',monospace;border:1px solid var(--border2);color:var(--text2);background:var(--bg)}
+.scan-badge.heat{border-color:var(--heat);color:var(--heat)}
+.scan-badge.cool{border-color:var(--cool);color:var(--cool)}
+.scan-badge.iso{border-color:var(--iso);color:var(--iso)}
 .db-stage-chk{flex-shrink:0;margin:0;cursor:pointer}
 .stage-basket{border-bottom:1px solid var(--border)}
 .stage-basket .sb-title{display:flex;align-items:center;gap:6px}
@@ -251,7 +256,10 @@ input[type=color].color-compact{width:2rem;height:1.4rem;padding:0;border:1px so
 .seg-text{flex:1;line-height:1.3}
 .seg-ctl{display:flex;gap:5px;align-items:center}
 .seg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:3px}
+.seg-grid.seg-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.chart-col{display:flex;flex-direction:column;gap:8px;min-width:0}
 .chart-pane{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.4rem}
+.therm-pane{flex:0 0 auto}
 .pane-title{font-size:10px;color:var(--text3);margin-bottom:4px;font-family:'IBM Plex Mono',monospace}
 .canvas-wrap{position:relative;height:100%}
 .zoom-box{position:absolute;border:1.5px dashed var(--accent);background:rgba(74,158,255,.1);display:none;pointer-events:none;z-index:2}
@@ -294,6 +302,8 @@ canvas{width:100%;height:100%}
 .tabbar .tab-series .tclose:hover{opacity:1;background:color-mix(in srgb,var(--accent) 35%,transparent)}
 .tabbar .tabbar-sep{flex:0 0 auto;width:1px;background:var(--border);margin:5px 5px 3px}
 .tabbar .tabbar-count{align-self:center;font-size:10px;color:var(--text3);padding:0 4px}
+.tabbar .tab-field-sel{align-self:center;flex:0 0 auto;margin:0 4px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:10px;padding:2px 4px;border-radius:5px;cursor:pointer;outline:none}
+.tabbar .tab-field-sel:hover{border-color:var(--accent)}
 .tabpanes{flex:1 1 auto;min-height:0;overflow:auto;background:var(--bg)}
 .tabpane{display:none;padding:12px}
 .tabpane.active{display:block}
@@ -1347,14 +1357,14 @@ function removeFromStageBasket(id){
   // file that merely shares the name is never destroyed.
   let removed=false;
   const f=files.find(x=>x.srcCacheId===id);
-  if(f){if(f.chart)f.chart.destroy();files=files.filter(x=>x!==f);removed=true;}
+  if(f){if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}files=files.filter(x=>x!==f);removed=true;}
   renderStageBasket();updateTreeCheckStates();
   if(removed)renderAll(); // renderPatternPanel prunes the now-missing segUids; outer chart refreshes
 }
 function clearStageBasket(){
   // Also drop files that were plotted FROM the basket and clean them out of patterns / outer chart.
   const removed=files.filter(f=>f.fromBasket);
-  removed.forEach(f=>{if(f.chart)f.chart.destroy();});
+  removed.forEach(f=>{if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}});
   if(removed.length)files=files.filter(f=>!f.fromBasket);
   stageBasket=[];stageBasketExcluded.clear();
   renderStageBasket();updateTreeCheckStates();
@@ -1774,7 +1784,7 @@ function parse(txt,fname,defer){
   if(parsed.hfFallback&&!defer)toast(`${fname}: Subtracted heat-flow column not found; showing the Unsubtracted signal instead`,'err');
   const segments=assignSegments(rows,methodSteps).map((s,idx)=>({
     ...s,idx,segUid:newUid(),visible:true,selectedOuter:false,
-    dOffset:0,yGain:1,
+    dOffset:0,yGain:1,xShift:0,   // xShift = per-series X offset (own tab view)
     outerXOffset:0,outerOffset:0,outerGain:1,
     outerColor:'',outerLabel:''
   }));
@@ -1783,6 +1793,7 @@ function parse(txt,fname,defer){
     id,fuid:newUid(),name:fname,color:FC[(files.length)%FC.length],data:rows,segments,meta,
     outerMainXOffset:0,outerMainOffset:0,   // per-series (file) main offset, added to every step's sub offset
     chart:null,sidebarOpen:true,mode:'zoom',
+    legendPos:'top',      // per-series chart legend position: 'top' | 'side'
     dscX:'time',          // 'temp' | 'time'
     dscY:'heatflow',      // 'heatflow' | 'temp'
     view:{xMin:null,xMax:null,yMin:null,yMax:null},
@@ -1834,9 +1845,9 @@ function nearestTimeIndex(rows,t){
 // dOffset/yGain are applied to the Y series; for Y='temp' yGain is forced to 1
 // (gain on a temperature trace would distort the absolute scale).
 function getSegPts(f,s,step=3){
-  const xMode=f.dscX,yMode=f.dscY;
+  const xMode=f.dscX,yMode=f.dscY,xShift=(s.xShift||0);
   return f.data.slice(s.start,s.end+1).filter((_,j)=>j%step===0).map(r=>{
-    const x=xMode==='temp'?+r.temp.toFixed(3):+r.time.toFixed(4);
+    const x=xMode==='temp'?+(r.temp+xShift).toFixed(3):+(r.time+xShift).toFixed(4);
     let y;
     if(yMode==='temp'){
       y=+(r.temp+(s.dOffset||0)).toFixed(3);
@@ -1851,6 +1862,8 @@ const LEGEND_FIELDS=[
   {id:'sample',label:'Sample'},
   {id:'filename',label:'Filename'},
   {id:'segment',label:'Segment'},
+  {id:'rate',label:'Rate'},
+  {id:'isoHold',label:'Iso hold'},
   {id:'minTemp',label:'Min temp'},
   {id:'measDate',label:'Meas date'},
   {id:'mass',label:'Mass'},
@@ -1863,6 +1876,17 @@ function legendFieldValue(f,s,id){
   const rec=dbRecByName(f.name)||{},meta=f.meta||{};
   if(id==='filename')return (f.name||'').replace(/\.[^.]+$/,'');
   if(id==='segment')return s?`Step${s.num??s.idx}`:'';
+  if(id==='rate'){                                   // this segment's scan rate (↑ heating / ↓ cooling)
+    if(!s||!Number.isFinite(s.rate)||s.rate<=0)return '';
+    if(s.type==='heating')return `↑${s.rate}°C/min`;
+    if(s.type==='cooling')return `↓${s.rate}°C/min`;
+    return '';
+  }
+  if(id==='isoHold'){                                // this segment's isothermal hold duration
+    if(!s||s.type!=='isothermal')return '';
+    const d=Number.isFinite(s.duration)?s.duration:((Number.isFinite(s.tEnd)&&Number.isFinite(s.tStart))?s.tEnd-s.tStart:NaN);
+    return (Number.isFinite(d)&&d>0)?`${+d.toFixed(1)}min`:'';
+  }
   if(id==='sample'){const v=rec.sampleName||meta['Sample ID']||meta['Sample']||meta['Sample Name']||'';return String(v).trim();}
   if(id==='minTemp'){let t=rec.minTemp;if(!Number.isFinite(t)){t=Infinity;for(const r of (f.data||[]))if(r.temp<t)t=r.temp;}return (Number.isFinite(t)&&t!==Infinity)?`${Math.round(t)}°C`:'';}
   if(id==='measDate'){let ep=rec.measEpoch;if(!Number.isFinite(ep))ep=pyrisDate(meta['Data Collected']||meta['Run Date']||'');if(!Number.isFinite(ep))return '';const d=new Date(ep);return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;}
@@ -1888,6 +1912,34 @@ function legendPartsControlsHtml(){
 }
 function defaultOuterLabel(f,s){return composeLegend(f,s);}
 function defaultOuterColor(f,s){return STYPE_COLOR[s.type]||f.color;}
+// Distinct heating / cooling scan rates and isothermal holds for a LOADED series (from its segments).
+function fileScanSets(f){
+  const H=new Set(),C=new Set(),I=new Set();
+  (f.segments||[]).forEach(s=>{
+    if(s.type==='heating'&&Number.isFinite(s.rate)&&s.rate>0)H.add(+s.rate);
+    else if(s.type==='cooling'&&Number.isFinite(s.rate)&&s.rate>0)C.add(+s.rate);
+    else if(s.type==='isothermal'){const d=Number.isFinite(s.duration)?s.duration:((Number.isFinite(s.tEnd)&&Number.isFinite(s.tStart))?s.tEnd-s.tStart:NaN);if(Number.isFinite(d)&&d>0)I.add(+d.toFixed(1));}
+  });
+  const srt=set=>[...set].sort((a,b)=>a-b);
+  return {heat:srt(H),cool:srt(C),iso:srt(I)};
+}
+// One segment's scan descriptor: heating/cooling rate (with arrow) or isothermal hold duration.
+function segScanStr(s){
+  if(!s)return '';
+  if(s.type==='heating'&&Number.isFinite(s.rate)&&s.rate>0)return `↑${s.rate}°C/min`;
+  if(s.type==='cooling'&&Number.isFinite(s.rate)&&s.rate>0)return `↓${s.rate}°C/min`;
+  if(s.type==='isothermal'){const d=Number.isFinite(s.duration)?s.duration:((Number.isFinite(s.tEnd)&&Number.isFinite(s.tStart))?s.tEnd-s.tStart:NaN);if(Number.isFinite(d)&&d>0)return `${+d.toFixed(1)}min`;}
+  return '';
+}
+function segScanBadgeHtml(s){const str=segScanStr(s);if(!str)return '';const cls=s.type==='heating'?'heat':(s.type==='cooling'?'cool':'iso');return `<span class="scan-badge ${cls}">${str}</span>`;}
+// Read-only scan-rate / iso-hold chips for a series' own tab (informational).
+function fileScanBadgesHtml(f){
+  const {heat,cool,iso}=fileScanSets(f),chips=[];
+  heat.forEach(v=>chips.push(`<span class="scan-badge heat" title="Heating rate">↑${v}°C/min</span>`));
+  cool.forEach(v=>chips.push(`<span class="scan-badge cool" title="Cooling rate">↓${v}°C/min</span>`));
+  iso.forEach(v=>chips.push(`<span class="scan-badge iso" title="Isothermal hold">iso ${v}m</span>`));
+  return chips.length?`<div class="scan-badges">${chips.join('')}</div>`:'';
+}
 function getOuterSegPts(f,s){
   const applyOffsets=outerApplyOffsets;
   const mainX=isFinite(f.outerMainXOffset)?f.outerMainXOffset:0;   // series (file) main offset
@@ -1928,9 +1980,15 @@ function fileOuterInner(f){
       </div>
       <div class="chart-body ${f.sidebarOpen?'':'sidebar-hidden'}" style="${f.chartOpen===false?'display:none':''}">
         <div class="sidebar-wrap">${renderFileSidebarHtml(f)}</div>
-        <div class="chart-pane" style="height:${paneHeight}px">
-          <div class="pane-title">${axisLabelY(f.dscY)} vs ${axisLabelX(f.dscX)}</div>
-          <div class="canvas-wrap"><div class="zoom-box" id="zoomBox-${f.id}"></div><canvas id="cvs-${f.id}"></canvas></div>
+        <div class="chart-col">
+          <div class="chart-pane therm-pane" style="height:150px">
+            <div class="pane-title">Thermal history — Sample Temp (°C) vs Time (min)</div>
+            <div class="canvas-wrap"><canvas id="thermCvs-${f.id}"></canvas></div>
+          </div>
+          <div class="chart-pane" style="height:${paneHeight}px">
+            <div class="pane-title">${axisLabelY(f.dscY)} vs ${axisLabelX(f.dscX)}</div>
+            <div class="canvas-wrap"><div class="zoom-box" id="zoomBox-${f.id}"></div><canvas id="cvs-${f.id}"></canvas></div>
+          </div>
         </div>
       </div>`;
 }
@@ -1941,7 +1999,7 @@ function renderFileOuters(){
     outer.innerHTML=fileOuterInner(f);
     grid.appendChild(outer);
     if(f.chartOpen!==false)renderFileChart(f);
-    else if(f.chart){f.chart.destroy();f.chart=null;}
+    else{if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}}
   });
   syncTabsAfterRender();   // rebuild the series tabs & apply which one is visible
 }
@@ -1953,7 +2011,7 @@ function renderOneFile(f){
   const grid=document.getElementById('chartsGrid');if(!grid)return renderFileOuters();
   const outer=grid.querySelector(`.chart-outer[data-fid="${f.id}"]`);
   if(!outer)return renderFileOuters();
-  if(f.chart){f.chart.destroy();f.chart=null;}
+  if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}
   outer.innerHTML=fileOuterInner(f);   // replaces innerHTML only → the pane's display (tab visibility) is preserved
   if(f.chartOpen!==false)renderFileChart(f);
   resizeActivePaneCharts();
@@ -1971,12 +2029,37 @@ const FIXED_TABS=[
 ];
 let activeTab=(()=>{try{return localStorage.getItem('dsc_active_tab')||'db';}catch(_e){return 'db';}})();
 let _prevSeriesN=0,_tabsBooted=false;
-// Short, human tab label for a loaded series: sample name (from the cache record / meta) else filename.
+// Which DB tree/filter category the series tab labels show (Sample, Meas date, Scan rates, Quality, …).
+let seriesTabField=(()=>{try{const v=localStorage.getItem('dsc_series_tab_field');return (v&&DB_TREE_FIELDS.includes(v))?v:'sampleName';}catch(_e){return 'sampleName';}})();
+function setSeriesTabField(v){if(!DB_TREE_FIELDS.includes(v))return;seriesTabField=v;try{localStorage.setItem('dsc_series_tab_field',v);}catch(_e){}renderTabs();}
+// Cache-record-like view of a LOADED series (cache record + computed fallbacks) so the tab label can
+// resolve any DB category via dbTreeLabel(), even for files that aren't in the cache.
+function fileAsRecord(f){
+  const rec=Object.assign({},dbRecByName(f.name)||{});
+  rec.name=rec.name||f.name;
+  if(!rec.sampleName){const sn=((f.meta&&(f.meta['Sample ID']||f.meta['Sample']||f.meta['Sample Name']))||'').toString().trim();if(sn)rec.sampleName=sn;}
+  if(!Number.isFinite(rec.segCount))rec.segCount=(f.segments||[]).length;
+  const sets=fileScanSets(f);
+  if(!Array.isArray(rec.heatRates)&&sets.heat.length)rec.heatRates=sets.heat;
+  if(!Array.isArray(rec.coolRates)&&sets.cool.length)rec.coolRates=sets.cool;
+  if(!Array.isArray(rec.isoHolds)&&sets.iso.length)rec.isoHolds=sets.iso;
+  if(!Number.isFinite(rec.heatRateMax)&&sets.heat.length)rec.heatRateMax=sets.heat[sets.heat.length-1];
+  if(!Number.isFinite(rec.coolRateMax)&&sets.cool.length)rec.coolRateMax=sets.cool[sets.cool.length-1];
+  if(!Number.isFinite(rec.maxIsoMin)&&sets.iso.length)rec.maxIsoMin=sets.iso[sets.iso.length-1];
+  if(!Number.isFinite(rec.minTemp)){let mn=Infinity;for(const r of (f.data||[]))if(r.temp<mn)mn=r.temp;if(isFinite(mn))rec.minTemp=+mn.toFixed(2);}
+  if(!Number.isFinite(rec.measEpoch)){const ep=pyrisDate((f.meta||{})['Data Collected']||(f.meta||{})['Run Date']||'');if(Number.isFinite(ep))rec.measEpoch=ep;}
+  if(!Number.isFinite(rec.sampleMass)){const mm=String((f.meta||{})['Sample Weight']||(f.meta||{})['Display Weight']||'').match(/-?\d+(\.\d+)?/);if(mm)rec.sampleMass=+mm[0];}
+  return rec;
+}
+// Series tab label = the chosen DB category's value; falls back to sample name / filename when empty.
 function seriesTabLabel(f){
-  const rec=dbRecByName(f.name)||{};
-  const s=rec.sampleName||(f.meta&&(f.meta['Sample']||f.meta['Sample Name']))||'';
-  const base=(s&&String(s).trim())||String(f.name||'').replace(/\.[^.]+$/,'');
-  return base;
+  if(seriesTabField==='name')return String(f.name||'').replace(/\.[^.]+$/,'');
+  const rec=fileAsRecord(f);
+  let label='';try{label=dbTreeLabel(seriesTabField,rec);}catch(_e){}
+  if(!label||/^\(no /.test(label)){                 // empty category → sample name, else filename
+    const sn=rec.sampleName;label=(sn&&String(sn).trim())||String(f.name||'').replace(/\.[^.]+$/,'');
+  }
+  return label;
 }
 // A stable-ish color dot per series so tabs are easy to scan (matches nothing critical; purely visual).
 function seriesTabColor(f){const p=['#4a9eff','#e8644a','#9d88e8','#3dba7e','#e8a040','#e85a8a','#40c4c4','#90b840'];const idx=files.indexOf(f);return p[(idx<0?0:idx)%p.length];}
@@ -1986,6 +2069,7 @@ function renderTabs(){
   html+='<span class="tabbar-sep"></span>';
   if(files.length){
     html+=`<span class="tabbar-count">${files.length} series</span>`;
+    html+=`<select class="tab-field-sel" title="Series tab label — choose which DB category to show" onchange="setSeriesTabField(this.value)">${DB_TREE_FIELDS.map(id=>`<option value="${id}"${seriesTabField===id?' selected':''}>${esc(DB_TREE_LABELS[id]||id)}</option>`).join('')}</select>`;
     html+=files.map(f=>{
       const id='series:'+f.id;
       return `<button class="tab tab-series ${activeTab===id?'active':''}" data-tab="${id}" onclick="setActiveTab('${id}')" title="${esc(f.name)}">
@@ -2044,6 +2128,7 @@ function renderFileSidebarHtml(f){
   const selectedCount=f.segments.filter(s=>s.selectedOuter).length;
   const yIsTemp=f.dscY==='temp';
   return `
+    ${fileScanBadgesHtml(f)}
     <div class="sidebar-card">
       <button type="button" class="acc-head" onclick="toggleFileAcc(${f.id},'controls')">
         <span class="lbl">Mode / Axis / Zoom / Scale</span><span class="acc-toggle">${acc.controls?'▾':'▸'}</span>
@@ -2063,6 +2148,11 @@ function renderFileSidebarHtml(f){
       <div class="btn-row">
         <button class="btn ${f.dscY==='heatflow'?'on':''}" onclick="setFileY(${f.id},'heatflow')">Y: Heat Flow</button>
         <button class="btn ${f.dscY==='temp'?'on':''}" onclick="setFileY(${f.id},'temp')">Y: Sample Temp</button>
+      </div>
+      <div class="lbl">Legend</div>
+      <div class="btn-row">
+        <button class="btn ${(f.legendPos||'top')==='top'?'on':''}" onclick="setFileLegendPos(${f.id},'top')">Leg: Top</button>
+        <button class="btn ${f.legendPos==='side'?'on':''}" onclick="setFileLegendPos(${f.id},'side')" title="Draw labels beside each trace, tracking its offset">Leg: Side</button>
       </div>
       <div class="lbl">Zoom</div>
       <div class="btn-row">
@@ -2092,12 +2182,19 @@ function renderFileSidebarHtml(f){
     </div>
     <div class="sidebar-card">
       <button type="button" class="acc-head" onclick="toggleFileAcc(${f.id},'segments')">
-        <span class="lbl">Segments (Visible / Outer / Y-Offset / Y-Gain)</span><span class="acc-toggle">${acc.segments?'▾':'▸'}</span>
+        <span class="lbl">Segments (Visible / Outer / X·Y-Offset / Y-Gain)</span><span class="acc-toggle">${acc.segments?'▾':'▸'}</span>
       </button>
       <div class="acc-body ${acc.segments?'':'closed'}">
-      <div class="lbl">Segments (Visible / Outer / Y-Offset / Y-Gain)</div>
+      <div class="lbl">Segments (Visible / Outer / X·Y-Offset / Y-Gain)</div>
       <div class="mini" style="margin-bottom:3px">${yIsTemp?'<em>Y-Gain is ignored in Temp mode</em>':'Y-Gain applies to Heat Flow only'}</div>
-      <div class="seg-list">
+      <div class="lbl" style="margin-top:2px">Auto Y-offset (stacks visible steps)</div>
+      <div class="btn-row" style="align-items:center;flex-wrap:wrap">
+        ${[0,10,25,50,75,100,150].map(p=>`<button class="btn" onclick="autoOffsetFile(${f.id},${p})" title="${p===0?'Clear Y offsets':`Stack visible steps at ${p}% of the largest amplitude`}">${p===0?'0':p+'%'}</button>`).join('')}
+        <input class="num" type="number" step="1" placeholder="%" title="Custom %: stack at this % of the largest amplitude" onchange="autoOffsetFileInput(${f.id},this.value)" style="width:48px">
+        <button class="btn" onclick="autoScaleFile(${f.id})" title="Normalize each visible step's amplitude via Y-Gain" ${yIsTemp?'disabled':''}>Auto scale</button>
+        <button class="btn" onclick="resetFileOffsets(${f.id})" title="Reset X/Y offset and Y-gain on all steps">Reset O/G</button>
+      </div>
+      <div class="seg-list" style="margin-top:4px">
         ${f.segments.map(s=>`
           <div class="seg-item">
             <div class="seg-ctl">
@@ -2105,17 +2202,18 @@ function renderFileSidebarHtml(f){
               <input type="checkbox" ${s.selectedOuter?'checked':''} onchange="toggleSegOuter(${f.id},${s.idx},this.checked)" title="Outer">
             </div>
             <div class="seg-text">
-              <div><strong>Step ${s.num}</strong> <span class="mini">${s.type}</span></div>
+              <div><strong>Step ${s.num}</strong> <span class="mini">${s.type}</span> ${segScanBadgeHtml(s)}</div>
               <div class="mini">T:${s.tmin.toFixed(1)}→${s.tmax.toFixed(1)} / t:${s.tStart.toFixed(2)}→${s.tEnd.toFixed(2)}</div>
-              <div class="seg-grid">
-                <input class="num" type="number" value="${s.dOffset}" step="0.05" onchange="setSegOffset(${f.id},${s.idx},this.value)" title="Y offset">
+              <div class="seg-grid seg-grid-3">
+                <input class="num" type="number" value="${s.xShift||0}" step="0.01" onchange="setSegXShift(${f.id},${s.idx},this.value)" title="X offset (${axisUnitX(f.dscX)})">
+                <input class="num" type="number" value="${s.dOffset}" step="0.01" onchange="setSegOffset(${f.id},${s.idx},this.value)" title="Y offset">
                 <input class="num" type="number" value="${s.yGain}" step="0.05" min="0.05" onchange="setSegGain(${f.id},${s.idx},this.value)" title="Y gain (HeatFlow only)" ${yIsTemp?'disabled':''}>
               </div>
             </div>
           </div>
         `).join('')}
       </div>
-      <div class="mini" style="margin-top:4px">Outer selected: ${selectedCount} segments</div>
+      <div class="mini" style="margin-top:4px">Cols: X-off · Y-off · Y-gain &nbsp;|&nbsp; Outer selected: ${selectedCount}</div>
       </div>
     </div>
     ${analysisCardHtml(f)}`;
@@ -2677,24 +2775,28 @@ function exportThermalDbCsv(){
 function renderFileChart(f){
   const cvs=document.getElementById(`cvs-${f.id}`);
   if(!cvs)return;
-  if(f.chart)f.chart.destroy();
+  if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}
   const vis=f.segments.filter(s=>s.visible);
   const datasets=[];
   const bounds={xMin:Infinity,xMax:-Infinity,yMin:Infinity,yMax:-Infinity};
   vis.forEach(s=>{
     const pts=getSegPts(f,s,3);
     pts.forEach(p=>{bounds.xMin=Math.min(bounds.xMin,p.x);bounds.xMax=Math.max(bounds.xMax,p.x);bounds.yMin=Math.min(bounds.yMin,p.y);bounds.yMax=Math.max(bounds.yMax,p.y);});
-    datasets.push({label:`Step${s.num} (${s.type})`,data:pts,borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
+    const sc=segScanStr(s);
+    datasets.push({label:`Step${s.num} (${s.type})${sc?' '+sc:''}`,data:pts,_legendY:legendYForPts(pts),borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.7,pointRadius:0,tension:0.1,fill:false});
   });
   if(!isFinite(bounds.xMin))Object.assign(bounds,{xMin:0,xMax:1,yMin:0,yMax:1});
   f.bounds=bounds;
   appendAnalysisOverlay(f,datasets);
   const xUnit=axisUnitX(f.dscX),yUnit=axisUnitY(f.dscY);
+  const side=f.legendPos==='side';
   const opts={
     responsive:true,maintainAspectRatio:false,
     interaction:{mode:'nearest',intersect:false},
+    layout:{padding:{right:side?estimateOuterLegendPad(datasets):0}},
     plugins:{
-      legend:{display:true,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'},filter:item=>!/^_/.test(item.text||'')}},
+      legend:{display:!side,position:'top',labels:{color:chartTickColor(),font:{size:10,family:'IBM Plex Mono'},filter:item=>!/^_/.test(item.text||'')}},
+      outerInlineLegend:{enabled:side,textColor:chartTickColor()},
       tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: x=${(+ctx.parsed.x).toFixed(3)} ${xUnit}, y=${(+ctx.parsed.y).toFixed(4)} ${yUnit}`}}
     },
     scales:{
@@ -2707,6 +2809,30 @@ function renderFileChart(f){
   bindDragZoom(cvs,()=>f.chart,f.view,f.bounds,()=>f.mode,document.getElementById(`zoomBox-${f.id}`),()=>renderOneFile(f));
   bindAnalysisPick(cvs,f);
   bindAnalysisDrag(cvs,f);
+  renderFileThermalChart(f);   // always draw the thermal-history reference above the main plot
+}
+// Always-on thermal history for a series: raw Sample Temp vs Time (whole program, colored by step type,
+// independent of the main plot's axes/offsets/zoom). Purely a reference — no zoom/pan bindings.
+function renderFileThermalChart(f){
+  const cvs=document.getElementById(`thermCvs-${f.id}`);
+  if(!cvs)return;
+  if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}
+  const datasets=(f.segments||[]).map(s=>({
+    label:`Step${s.num} (${s.type})`,
+    data:f.data.slice(s.start,s.end+1).filter((_,j)=>j%3===0).map(r=>({x:+r.time.toFixed(4),y:+r.temp.toFixed(3)})),
+    borderColor:STYPE_COLOR[s.type]||f.color,borderWidth:1.5,pointRadius:0,tension:0.1,fill:false
+  }));
+  f.thermChart=new Chart(cvs,{type:'line',data:{datasets},options:{
+    responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: t=${(+ctx.parsed.x).toFixed(2)} min, T=${(+ctx.parsed.y).toFixed(1)} °C`}}
+    },
+    scales:{
+      x:{type:'linear',grid:{color:chartGridColor()},ticks:{color:chartTickColor(),font:{size:9}},title:{display:true,text:'Time (min)',color:chartTickColor(),font:{size:9}}},
+      y:{grid:{color:chartGridColor()},ticks:{color:chartTickColor(),font:{size:9}},title:{display:true,text:'Sample Temp (°C)',color:chartTickColor(),font:{size:9}}}
+    }
+  }});
 }
 // Live-update ONLY the analysis overlay datasets (no chart teardown) — used during handle drag for smoothness.
 function updateAnalysisOverlayLive(f){
@@ -2807,7 +2933,7 @@ function bindAnalysisPick(canvas,f){
 function findFile(fid){return files.find(f=>f.id===fid)||null;}
 function removeFile(fid){
   const f=findFile(fid);if(!f)return;
-  if(f.chart)f.chart.destroy();
+  if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}
   files=files.filter(x=>x.id!==fid);
   delete fileAcc[fid];
   // remove only this element (don't re-render the other files' charts)
@@ -2831,6 +2957,32 @@ function toggleSegVisible(fid,idx,checked){const f=findFile(fid);if(!f)return;co
 function toggleSegOuter(fid,idx,checked){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;s.selectedOuter=!!checked;renderAll();}
 function setSegOffset(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.dOffset=isNaN(n)?0:n;renderOneFile(f);}
 function setSegGain(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.yGain=(isNaN(n)||n<=0)?1:n;renderOneFile(f);}
+function setSegXShift(fid,idx,v){const f=findFile(fid);if(!f)return;const s=f.segments.find(x=>x.idx===idx);if(!s)return;const n=parseFloat(v);s.xShift=isNaN(n)?0:n;renderOneFile(f);}
+function setFileLegendPos(fid,pos){const f=findFile(fid);if(!f)return;f.legendPos=pos==='side'?'side':'top';renderOneFile(f);}
+// Raw peak-to-peak of a visible segment's displayed Y series (gain-adjusted for heat flow).
+function fileSegAmp(f,s){let mn=Infinity,mx=-Infinity;for(const r of f.data.slice(s.start,s.end+1)){const v=f.dscY==='temp'?r.temp:r.hf;if(v<mn)mn=v;if(v>mx)mx=v;}const amp=isFinite(mn)?(mx-mn):0;return f.dscY==='temp'?amp:amp*((isFinite(s.yGain)&&s.yGain>0)?s.yGain:1);}
+// Percent auto Y-offset: stack visible steps at pct% of the largest (gain-adjusted) amplitude.
+function autoOffsetFile(fid,pct){
+  const f=findFile(fid);if(!f)return;
+  const vis=f.segments.filter(s=>s.visible);if(!vis.length){toast('No visible steps','err');return;}
+  if(pct===0){vis.forEach(s=>{s.dOffset=0;});renderOneFile(f);return;}
+  const refAmp=Math.max(0,...vis.map(s=>fileSegAmp(f,s)));
+  if(!(refAmp>0)){toast('Flat traces — nothing to offset','err');return;}
+  const step=(pct/100)*refAmp;
+  vis.forEach((s,i)=>{s.dOffset=+(i*step).toFixed(6);});
+  renderOneFile(f);
+}
+function autoOffsetFileInput(fid,v){const n=parseFloat(v);if(isNaN(n))return;autoOffsetFile(fid,n);}
+function autoScaleFile(fid){
+  const f=findFile(fid);if(!f)return;
+  if(f.dscY==='temp'){toast('Auto scale applies to Heat Flow only','err');return;}
+  const vis=f.segments.filter(s=>s.visible);if(!vis.length)return;
+  const amps=vis.map(s=>{let mn=Infinity,mx=-Infinity;for(const r of f.data.slice(s.start,s.end+1)){if(r.hf<mn)mn=r.hf;if(r.hf>mx)mx=r.hf;}return isFinite(mn)?(mx-mn):0;});
+  const tgt=median(amps.filter(a=>a>0));if(!(tgt>0)){toast('Flat traces — nothing to scale','err');return;}
+  vis.forEach((s,i)=>{s.yGain=amps[i]>0?clamp(tgt/amps[i],0.01,1000):1;});
+  renderOneFile(f);
+}
+function resetFileOffsets(fid){const f=findFile(fid);if(!f)return;f.segments.forEach(s=>{s.xShift=0;s.dOffset=0;s.yGain=1;});renderOneFile(f);}
 function resetFileView(fid){const f=findFile(fid);if(!f)return;f.view={xMin:null,xMax:null,yMin:null,yMax:null};renderOneFile(f);}
 function zoomFile(fid,axis,factor){
   const f=findFile(fid);if(!f||!f.chart)return;
@@ -3047,6 +3199,19 @@ function autoOffsetWindow(pid){
   else{const step=iv!=null?iv:Math.max(0,...eff)*1.12;segs.forEach(({s},i)=>{winOverride(st,s.segUid).yOffset=+(i*step).toFixed(6);});}
   renderOnePatternWindow(pid);
 }
+// Percent auto-offset: stack this window's segments at pct% of the largest (gain-adjusted) amplitude.
+function equalOffsetWindow(pid,pct){
+  const w=getPatternWindow(pid),st=w.state,p=patternList.find(x=>x.id===pid);
+  const segs=segsForPattern(p);if(!segs.length){toast('No segments','err');return;}
+  if(pct===0){segs.forEach(({s})=>{winOverride(st,s.segUid).yOffset=0;});toast('Offsets cleared');renderOnePatternWindow(pid);return;}
+  const eff=segs.map(({f,s})=>{const o=winOverride(st,s.segUid);const g=(isFinite(o.gain)&&o.gain>0)?o.gain:1;return rawAmpY(f,s,st.yAxis)*(st.yAxis==='temp'?1:g);});
+  const refAmp=Math.max(0,...eff);
+  if(!(refAmp>0)){toast('Flat traces — nothing to offset','err');return;}
+  const step=(pct/100)*refAmp;
+  segs.forEach(({s},i)=>{winOverride(st,s.segUid).yOffset=+(i*step).toFixed(6);});
+  toast(`Equal offset: ${pct}% × ${segs.length} segments`);
+  renderOnePatternWindow(pid);
+}
 function autoScaleWindow(pid){
   const w=getPatternWindow(pid),st=w.state,p=patternList.find(x=>x.id===pid);
   if(st.yAxis==='temp'){toast('Auto scale applies to Heat Flow only','err');return;}
@@ -3139,9 +3304,11 @@ function patternWindowCardHtml(p){
     </div>
     <div class="pw-controls">
       <span class="pw-grp"><button class="btn ${on(st.offsetMode==='equal')}" onclick="setPatternWindowState('${esc(pid)}','offsetMode','equal')">Equal</button><button class="btn ${on(st.offsetMode==='stack')}" onclick="setPatternWindowState('${esc(pid)}','offsetMode','stack')">Stack</button><input class="num" type="number" step="0.1" placeholder="interval" title="Offset spacing (blank=auto)" value="${st.interval}" oninput="setPatternWindowState('${esc(pid)}','interval',this.value)" style="width:54px"><button class="btn" onclick="autoOffsetWindow('${esc(pid)}')">Auto offset</button></span>
+      <span class="pw-grp"><span class="mini">Equal ↕:</span>${[0,10,25,50,75,100,150].map(p=>`<button class="btn" onclick="equalOffsetWindow('${esc(pid)}',${p})" title="${p===0?'Clear segment offsets':`Stack segments at ${p}% of the largest amplitude`}">${p===0?'0':p+'%'}</button>`).join('')}<input class="num" type="number" step="1" placeholder="%" title="Custom %: stack at this % of the largest amplitude" onchange="{const n=parseFloat(this.value);if(!isNaN(n))equalOffsetWindow('${esc(pid)}',n);}" style="width:46px"></span>
       <span class="pw-grp"><button class="btn" onclick="autoScaleWindow('${esc(pid)}')" ${yTemp?'disabled':''}>Auto scale</button><button class="btn" onclick="resetWindowOG('${esc(pid)}')">Reset O/G</button></span>
       <span class="pw-grp"><button class="btn" onclick="zoomPatternWindow('${esc(pid)}','x',0.85)">X+</button><button class="btn" onclick="zoomPatternWindow('${esc(pid)}','x',1.18)">X-</button><button class="btn" onclick="zoomPatternWindow('${esc(pid)}','y',0.85)">Y+</button><button class="btn" onclick="zoomPatternWindow('${esc(pid)}','y',1.18)">Y-</button><button class="btn" onclick="resetPatternWindowView('${esc(pid)}')">Reset</button></span>
     </div>
+    <div class="pw-controls"><div class="lg-parts-row">${legendPartsControlsHtml()}</div></div>
     <div class="pw-pane" style="height:${st.height}px"><div class="zoom-box" id="pw_${pid}_box"></div><canvas id="pw_${pid}_cvs"></canvas></div>
     <div class="pw-span"><span class="mini">Span ${st.xAxis==='temp'?'°C':'min'} / ${yTemp?'°C':'mW/mg'}:</span>
       <input class="num" id="pwspan-xmin-${pid}" placeholder="x min" value="${Number.isFinite(w.view.xMin)?w.view.xMin:''}">
@@ -3236,6 +3403,7 @@ const outerInlineLegendPlugin={
     const rows=[];
     dss.forEach((d,i)=>{
       if(!chart.isDatasetVisible(i))return;
+      if(/^_/.test(String(d.label||'')))return;   // skip analysis-overlay helper datasets (match top-legend filter)
       let yVal=d._legendY;
       if(!Number.isFinite(yVal)){const ys=(d.data||[]).map(p=>p&&p.y).filter(Number.isFinite);if(!ys.length)return;yVal=ys[ys.length-1];}
       const py=chart.scales.y&&chart.scales.y.getPixelForValue(yVal);
@@ -3388,7 +3556,7 @@ function renderOuterSidebarHtml(sel){
       <div class="mini" style="margin-bottom:3px">Per-file (series) offset. Added to each step's Offset X/Y below.</div>
       <div class="btn-row" style="margin-bottom:4px;align-items:center">
         <span class="mini" style="align-self:center">Equal ↕:</span>
-        ${[0,25,50,75,100,150].map(p=>`<button class="btn" onclick="equalMainOffset(${p})" title="${p===0?'Clear the series main offset':`Stack every series at equal ${p}% spacing (of the largest trace amplitude) — one click`}">${p===0?'0':p+'%'}</button>`).join('')}
+        ${[0,10,25,50,75,100,150].map(p=>`<button class="btn" onclick="equalMainOffset(${p})" title="${p===0?'Clear the series main offset':`Stack every series at equal ${p}% spacing (of the largest trace amplitude) — one click`}">${p===0?'0':p+'%'}</button>`).join('')}<input class="num" type="number" step="1" placeholder="%" title="Custom %: stack series at this % of the largest amplitude" onchange="{const n=parseFloat(this.value);if(!isNaN(n))equalMainOffset(n);}" style="width:46px">
       </div>
       ${filesInSel.length?`<div class="seg-table-wrap"><table class="seg-table">
         <thead><tr><th>Series (file)</th><th>Quality</th><th>Main Off X</th><th>Main Off Y</th></tr></thead>
@@ -3578,6 +3746,7 @@ function serializeProject(){
       outerMainXOffset:isFinite(f.outerMainXOffset)?f.outerMainXOffset:0,
       outerMainOffset:isFinite(f.outerMainOffset)?f.outerMainOffset:0,
       chartScale:f.chartScale,sidebarOpen:f.sidebarOpen,chartOpen:f.chartOpen!==false,mode:f.mode,
+      legendPos:f.legendPos||'top',
       dscX:f.dscX,dscY:f.dscY,view:f.view,
       segments:f.segments.map(s=>({...s}))
     }))
@@ -3590,7 +3759,7 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
   // reassigned on load — so build oldId→fuid to migrate legacy projects without losing the offsets.
   const oldFileIdToFuid={};
   payload.files.forEach(src=>{if(!src)return;if(!src.fuid)src.fuid=newUid();oldFileIdToFuid[src.id]=src.fuid;});
-  if(replace){files.forEach(f=>{if(f.chart)f.chart.destroy();});files=[];}
+  if(replace){files.forEach(f=>{if(f.chart){f.chart.destroy();f.chart=null;}if(f.thermChart){f.thermChart.destroy();f.thermChart=null;}});files=[];}
   if(!dataOnly){
     outerSidebarOpen=payload.outer?.outerSidebarOpen??outerSidebarOpen;
     outerChartOpen=payload.outer?.outerChartOpen!==false;
@@ -3624,6 +3793,7 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
       selectedOuter:!!s.selectedOuter,
       dOffset:isFinite(s.dOffset)?s.dOffset:0,
       yGain:(isFinite(s.yGain)&&s.yGain>0)?s.yGain:1,
+      xShift:isFinite(s.xShift)?s.xShift:0,
       outerXOffset:isFinite(s.outerXOffset)?s.outerXOffset:0,
       outerOffset:isFinite(s.outerOffset)?s.outerOffset:0,
       outerGain:(isFinite(s.outerGain)&&s.outerGain>0)?s.outerGain:1,
@@ -3639,6 +3809,7 @@ function hydrateProject(payload,{replace=true,dataOnly=false}={}){
       sidebarOpen:src.sidebarOpen!==false,
       chartOpen:src.chartOpen!==false,
       mode:src.mode==='lock'?'lock':'zoom',
+      legendPos:src.legendPos==='side'?'side':'top',
       dscX:src.dscX==='temp'?'temp':'time',
       dscY:src.dscY==='temp'?'temp':'heatflow',
       view:src.view||{xMin:null,xMax:null,yMin:null,yMax:null},
