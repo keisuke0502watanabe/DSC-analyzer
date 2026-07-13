@@ -114,6 +114,16 @@ code,input[type=number],input[type=text],.mono{font-family:'IBM Plex Mono',monos
 .db-file-tag{display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg4);color:var(--text3);border:1px solid var(--border2);margin-top:2px}
 .db-file-actions{display:flex;gap:3px;opacity:0;transition:opacity .12s}
 .db-file:hover .db-file-actions{opacity:1}
+.db-file-qual{display:flex;gap:1px;flex-shrink:0;align-items:center}
+.db-file-qual .qstar{font-size:12px;line-height:1;color:var(--border2);cursor:pointer;transition:color .1s}
+.db-file-qual .qstar:hover{color:var(--accent)}
+.db-file-qual .qstar.on{color:#e8a040}
+.ff-qual{display:flex;align-items:flex-start;gap:5px;font-size:10px;color:var(--text3)}
+.ff-qual>span:first-child{flex:0 0 70px;padding-top:2px}
+.ff-qual .ff-chips{display:flex;flex-wrap:wrap;gap:3px;flex:1;min-width:0}
+.qual-chip{font-size:9px;padding:2px 6px;border-radius:10px;background:var(--bg);border:1px solid var(--border2);color:var(--text3);cursor:pointer;font-family:'IBM Plex Mono',monospace}
+.qual-chip:hover{border-color:var(--accent)}
+.qual-chip.on{background:#e8a040;border-color:#e8a040;color:#1a1a1a}
 .db-stage-chk{flex-shrink:0;margin:0;cursor:pointer}
 .stage-basket{border-bottom:1px solid var(--border)}
 .stage-basket .sb-title{display:flex;align-items:center;gap:6px}
@@ -350,8 +360,11 @@ canvas{width:100%;height:100%}
         <div class="ff-range"><span>Meas date</span><input type="date" id="ffDateFrom" title="from" onchange="setFileFilter('dateFrom',this.value)"><input type="date" id="ffDateTo" title="to" onchange="setFileFilter('dateTo',this.value)"></div>
         <div class="ff-range"><span>Segments</span><input type="number" id="ffSegMin" placeholder="min" oninput="setFileFilter('segMin',this.value)"><input type="number" id="ffSegMax" placeholder="max" oninput="setFileFilter('segMax',this.value)"></div>
         <div class="ff-range"><span>Min temp °C</span><input type="number" id="ffTempMin" placeholder="≥" oninput="setFileFilter('tempMin',this.value)"><input type="number" id="ffTempMax" placeholder="≤" oninput="setFileFilter('tempMax',this.value)"></div>
-        <div class="ff-range"><span>Iso hold min</span><input type="number" id="ffIsoMin" placeholder="≥" oninput="setFileFilter('isoMin',this.value)"><input type="number" id="ffIsoMax" placeholder="≤" oninput="setFileFilter('isoMax',this.value)"></div>
+        <div class="ff-qual"><span>Iso hold min</span><span class="ff-chips" id="ffIsoChips"></span></div>
         <div class="ff-range"><span>Mass mg</span><input type="number" id="ffMassMin" placeholder="≥" oninput="setFileFilter('massMin',this.value)"><input type="number" id="ffMassMax" placeholder="≤" oninput="setFileFilter('massMax',this.value)"></div>
+        <div class="ff-qual"><span>Heat rate °C/min</span><span class="ff-chips" id="ffHeatChips"></span></div>
+        <div class="ff-qual"><span>Cool rate °C/min</span><span class="ff-chips" id="ffCoolChips"></span></div>
+        <div class="ff-qual"><span>Quality</span><span class="ff-chips" id="ffQualChips"></span></div>
       </div>
       <div class="db-tree-order">
         <span>Tree:</span>
@@ -376,6 +389,12 @@ canvas{width:100%;height:100%}
           <option value="maxIsoMin:asc">Iso hold (shortest)</option>
           <option value="sampleMass:desc">Mass (heaviest)</option>
           <option value="sampleMass:asc">Mass (lightest)</option>
+          <option value="qualification:desc">Quality (highest)</option>
+          <option value="qualification:asc">Quality (lowest)</option>
+          <option value="heatRateMax:desc">Heat rate (fastest)</option>
+          <option value="heatRateMax:asc">Heat rate (slowest)</option>
+          <option value="coolRateMax:desc">Cool rate (fastest)</option>
+          <option value="coolRateMax:asc">Cool rate (slowest)</option>
         </select>
       </div>
       <div class="btn-row">
@@ -563,6 +582,14 @@ canvas{width:100%;height:100%}
       <label>Longest isothermal min<input type="number" id="fmeIso" step="0.1" placeholder="auto"></label>
       <label>Sample mass mg<input type="number" id="fmeMass" step="0.001" placeholder="auto"></label>
       <label>Tags (comma separated)<input type="text" id="fmeTags" placeholder="e.g. batchA, LN2"></label>
+      <label>Quality (1–5)<select id="fmeQual">
+        <option value="">— unrated —</option>
+        <option value="5">5: Publication-ready</option>
+        <option value="4">4: Partly usable</option>
+        <option value="3">3: For reference</option>
+        <option value="2">2: Partly for reference</option>
+        <option value="1">1: Unusable</option>
+      </select></label>
     </div>
     <div style="font-size:9px;color:var(--text3);margin:4px 0 8px">Blank a computed field (segments / temp / iso) to recompute it from the data on next refresh.</div>
     <div class="btn-row">
@@ -928,12 +955,60 @@ document.getElementById('saveModal').addEventListener('click',e=>{if(e.target===
 // ════════════════════════════════════════════════
 let dbFileCache=[];let dbProjectCache=[];let fileSearchQuery='';
 // Advanced filters over derived stats stored on each cache record.
-let fileFilters={sample:'',dateFrom:'',dateTo:'',segMin:'',segMax:'',tempMin:'',tempMax:'',isoMin:'',isoMax:'',massMin:'',massMax:''};
+let fileFilters={sample:'',dateFrom:'',dateTo:'',segMin:'',segMax:'',tempMin:'',tempMax:'',isoSel:[],massMin:'',massMax:'',heatSel:[],coolSel:[],qual:[]};
 let fileFiltersOpen=false;
+// Toggle a discrete scan-rate value in the heating / cooling multi-select filter (contains-semantics).
+function toggleRateFilter(kind,v){const arr=kind==='cool'?fileFilters.coolSel:fileFilters.heatSel;const i=arr.indexOf(v);if(i>=0)arr.splice(i,1);else arr.push(v);renderDbFileList();}
+// Toggle a discrete isothermal-hold duration in the multi-select filter (contains-semantics).
+function toggleIsoFilter(v){const arr=fileFilters.isoSel;const i=arr.indexOf(v);if(i>=0)arr.splice(i,1);else arr.push(v);renderDbFileList();}
+// Distinct values (rates / iso holds) present across the whole cache, for building the filter chips.
+function distinctRates(key){const s=new Set();dbFileCache.forEach(f=>{(Array.isArray(f[key])?f[key]:[]).forEach(r=>{if(Number.isFinite(r))s.add(r);});});return [...s].sort((a,b)=>a-b);}
+// Human-readable rate signature for tree grouping: e.g. "↑5/10/20 ↓10" (same program = same string).
+function rateSigStr(f){
+  const h=Array.isArray(f.heatRates)&&f.heatRates.length?('↑'+f.heatRates.join('/')):'';
+  const c=Array.isArray(f.coolRates)&&f.coolRates.length?('↓'+f.coolRates.join('/')):'';
+  return [h,c].filter(Boolean).join(' ')||'(no rate)';
+}
+// Iso-hold signature for tree grouping / row display: e.g. "iso 15/30/60m".
+function isoSigStr(f){return (Array.isArray(f.isoHolds)&&f.isoHolds.length)?('iso '+f.isoHolds.join('/')+'m'):'(no iso)';}
+// Manual 5-level data-quality rating (rec.qualification, 1..5; absent = unrated). Filterable + sortable.
+const QUAL_LABELS={1:'Unusable',2:'Partly for reference',3:'For reference',4:'Partly usable',5:'Publication-ready'};
+function qualTitle(v){return v===0?'Unrated':`${v}: ${QUAL_LABELS[v]||''}`;}
+// Toggle a quality level (0 = unrated) in the multi-select quality filter.
+function toggleQualFilter(v){const q=fileFilters.qual;const i=q.indexOf(v);if(i>=0)q.splice(i,1);else q.push(v);renderDbFileList();}
+// A shared 5-star rating widget (used in the DB list rows AND the outer-plot series table).
+// recId = the DB cache record id; clicking a star sets that level, clicking the current one clears it.
+function qualStarsHtml(recId,cur){
+  const c=Number.isFinite(cur)?cur:0;
+  const stars=[1,2,3,4,5].map(n=>`<span class="qstar${c>=n?' on':''}" onclick="event.stopPropagation();setFileQuality(${recId},${n})" title="${qualTitle(n)}">★</span>`).join('');
+  return `<span class="db-file-qual" data-qual-fid="${recId}" onclick="event.stopPropagation()" title="Data quality — click a star to rate, click it again to clear">${stars}</span>`;
+}
+// Update every on-screen star widget for one record in place (no chart/list rebuild) — keeps the
+// DB list and the outer-plot series table in sync after a rating change from either surface.
+function refreshQualStars(id){
+  const m=dbFileCache.find(x=>x.id===id);
+  const cur=m&&Number.isFinite(m.qualification)?m.qualification:0;
+  document.querySelectorAll(`.db-file-qual[data-qual-fid="${id}"] .qstar`).forEach((st,i)=>st.classList.toggle('on',cur>=i+1));
+}
+// One-click set/clear a file's rating from the DB list row or the outer-plot series table.
+async function setFileQuality(id,n){
+  let rec;try{rec=await adapter.getFile(id);}catch(e){toast('Load error: '+e.message,'err');return;}
+  if(!rec){toast('File not found','err');return;}
+  const cur=Number.isFinite(rec.qualification)?rec.qualification:0;
+  const next=(cur===n)?0:n;
+  if(next)rec.qualification=next;else delete rec.qualification;
+  try{
+    await adapter.putFileRaw(rec);
+    const m=dbFileCache.find(x=>x.id===id);if(m){if(next)m.qualification=next;else delete m.qualification;}
+    refreshQualStars(id);                       // update stars everywhere without a heavy rebuild
+    if(activeTab==='db')renderDbFileList();      // re-apply DB-list filter/sort only when it's the visible view
+    try{autoBackup.scheduleBackup();}catch(_e){}
+  }catch(e){toast('Save error: '+e.message,'err');}
+}
 // Configurable multi-level tree for the file cache (XRD-analyzer style): pick grouping levels,
 // each branch carries a checkbox that bulk-stages every file under it into the basket.
-const DB_TREE_FIELDS=['sampleName','measDate','segCount','minTemp','maxIsoMin','sampleMass','name'];
-const DB_TREE_LABELS={sampleName:'Sample',measDate:'Meas date',segCount:'Segments',minTemp:'Min temp',maxIsoMin:'Iso hold',sampleMass:'Mass',name:'Filename'};
+const DB_TREE_FIELDS=['sampleName','measDate','segCount','minTemp','maxIsoMin','isoSig','sampleMass','rateSig','heatRateMax','coolRateMax','qualification','name'];
+const DB_TREE_LABELS={sampleName:'Sample',measDate:'Meas date',segCount:'Segments',minTemp:'Min temp',maxIsoMin:'Iso hold (max)',isoSig:'Iso holds',sampleMass:'Mass',rateSig:'Scan rates',heatRateMax:'Heat rate',coolRateMax:'Cool rate',qualification:'Quality',name:'Filename'};
 const DB_TREE_MAX_LEVELS=5;
 const DB_TREE_MIN_LEVELS=1;
 let dbTreeOrder=['sampleName'];   // active grouping levels (1..DB_TREE_MAX_LEVELS, add/remove with −/+)
@@ -946,7 +1021,12 @@ function dbTreeLabel(field,f){
   if(field==='segCount')return Number.isFinite(f.segCount)?`${f.segCount} seg`:'(no seg)';
   if(field==='minTemp')return Number.isFinite(f.minTemp)?`${Math.round(f.minTemp)} °C`:'(no temp)';
   if(field==='maxIsoMin')return Number.isFinite(f.maxIsoMin)?`iso ${f.maxIsoMin} min`:'(no iso)';
+  if(field==='isoSig')return isoSigStr(f);
   if(field==='sampleMass')return Number.isFinite(f.sampleMass)?`${f.sampleMass.toFixed(1)} mg`:'(no mass)';
+  if(field==='rateSig')return rateSigStr(f);
+  if(field==='heatRateMax')return Number.isFinite(f.heatRateMax)?`↑${f.heatRateMax} °C/min`:'(no heat rate)';
+  if(field==='coolRateMax')return Number.isFinite(f.coolRateMax)?`↓${f.coolRateMax} °C/min`:'(no cool rate)';
+  if(field==='qualification')return Number.isFinite(f.qualification)?`★${f.qualification} ${QUAL_LABELS[f.qualification]||''}`:'(unrated)';
   if(field==='name')return f.name||'(no name)';
   return '?';
 }
@@ -957,7 +1037,12 @@ function dbTreeSortValue(field,f){
   if(field==='segCount')return Number.isFinite(f.segCount)?f.segCount:Infinity;
   if(field==='minTemp')return Number.isFinite(f.minTemp)?f.minTemp:Infinity;
   if(field==='maxIsoMin')return Number.isFinite(f.maxIsoMin)?f.maxIsoMin:Infinity;
+  if(field==='isoSig')return isoSigStr(f);
   if(field==='sampleMass')return Number.isFinite(f.sampleMass)?f.sampleMass:Infinity;
+  if(field==='rateSig')return rateSigStr(f);
+  if(field==='heatRateMax')return Number.isFinite(f.heatRateMax)?f.heatRateMax:Infinity;
+  if(field==='coolRateMax')return Number.isFinite(f.coolRateMax)?f.coolRateMax:Infinity;
+  if(field==='qualification')return Number.isFinite(f.qualification)?f.qualification:Infinity;
   if(field==='name')return (f.name||'').toLowerCase();
   return '';
 }
@@ -1050,7 +1135,8 @@ function dbFileRowHtml(f){
         <div class="db-file-meta">${ds} · ${f.rowCount||0} pts</div>
         ${statLine?`<div class="db-file-meta db-file-stats" title="${statLine}">${statLine}</div>`:''}
       </div>
-      <div class="db-file-actions"><button class="btn" onclick="event.stopPropagation();openFileMetaEdit(${f.id})" title="Edit sample / date / segments / temp / iso / mass">edit</button><button class="btn warn" onclick="event.stopPropagation();deleteDbFile(${f.id})" title="Delete">✕</button></div>
+      ${qualStarsHtml(f.id,f.qualification)}
+      <div class="db-file-actions"><button class="btn" onclick="event.stopPropagation();openFileMetaEdit(${f.id})" title="Edit sample / date / segments / temp / iso / mass / quality">edit</button><button class="btn warn" onclick="event.stopPropagation();deleteDbFile(${f.id})" title="Delete">✕</button></div>
     </div>`;
 }
 function anyFileFilterActive(){return Object.values(fileFilters).some(v=>String(v).trim()!=='');}
@@ -1064,27 +1150,70 @@ function fileMatchesFilters(f){
   if(ff.segMax!==''&&!(f.segCount<=+ff.segMax))return false;
   if(ff.tempMin!==''&&!(f.minTemp>=+ff.tempMin))return false;
   if(ff.tempMax!==''&&!(f.minTemp<=+ff.tempMax))return false;
-  if(ff.isoMin!==''&&!(f.maxIsoMin>=+ff.isoMin))return false;
-  if(ff.isoMax!==''&&!(f.maxIsoMin<=+ff.isoMax))return false;
+  // Iso-hold filter: discrete multi-select (contains) — match if the run has ANY selected hold duration.
+  if(Array.isArray(ff.isoSel)&&ff.isoSel.length){
+    const hs=Array.isArray(f.isoHolds)?f.isoHolds:(Number.isFinite(f.maxIsoMin)?[f.maxIsoMin]:[]);
+    if(!hs.some(h=>ff.isoSel.includes(h)))return false;
+  }
   if(ff.massMin!==''&&!(f.sampleMass>=+ff.massMin))return false;
   if(ff.massMax!==''&&!(f.sampleMass<=+ff.massMax))return false;
+  // Scan-rate filters: discrete multi-select (contains) — match if the run has ANY selected heating/cooling rate.
+  if(Array.isArray(ff.heatSel)&&ff.heatSel.length){
+    const rs=Array.isArray(f.heatRates)?f.heatRates:[];
+    if(!rs.some(r=>ff.heatSel.includes(r)))return false;
+  }
+  if(Array.isArray(ff.coolSel)&&ff.coolSel.length){
+    const rs=Array.isArray(f.coolRates)?f.coolRates:[];
+    if(!rs.some(r=>ff.coolSel.includes(r)))return false;
+  }
+  // Quality: multi-select levels (0 = unrated). Empty selection = no quality filter.
+  if(Array.isArray(ff.qual)&&ff.qual.length){
+    const q=Number.isFinite(f.qualification)?f.qualification:0;
+    if(!ff.qual.includes(q))return false;
+  }
   return true;
 }
 function setFileFilter(key,val){if(key in fileFilters){fileFilters[key]=val;renderDbFileList();}}
-function clearFileFilters(){fileFilters={sample:'',dateFrom:'',dateTo:'',segMin:'',segMax:'',tempMin:'',tempMax:'',isoMin:'',isoMax:'',massMin:'',massMax:''};renderFileFilterPanel();renderDbFileList();}
+function clearFileFilters(){fileFilters={sample:'',dateFrom:'',dateTo:'',segMin:'',segMax:'',tempMin:'',tempMax:'',isoSel:[],massMin:'',massMax:'',heatSel:[],coolSel:[],qual:[]};renderFileFilterPanel();renderDbFileList();}
 function toggleFileFilters(){fileFiltersOpen=!fileFiltersOpen;const b=document.getElementById('fileFilterBody');if(b)b.style.display=fileFiltersOpen?'block':'none';const h=document.getElementById('fileFilterToggle');if(h)h.textContent=fileFiltersOpen?'▾ Filters':'▸ Filters';}
 function renderFileFilterPanel(){
   const ff=fileFilters;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   set('ffSample',ff.sample);set('ffDateFrom',ff.dateFrom);set('ffDateTo',ff.dateTo);
   set('ffSegMin',ff.segMin);set('ffSegMax',ff.segMax);set('ffTempMin',ff.tempMin);set('ffTempMax',ff.tempMax);
-  set('ffIsoMin',ff.isoMin);set('ffIsoMax',ff.isoMax);set('ffMassMin',ff.massMin);set('ffMassMax',ff.massMax);
+  set('ffMassMin',ff.massMin);set('ffMassMax',ff.massMax);
+  // Scan-rate chips: discrete values that actually exist in the cache (click a rate = show files that use it).
+  const rateChips=(elId,vals,selArr,kind)=>{
+    const el=document.getElementById(elId);if(!el)return;
+    const word=kind==='cool'?'cooling':'heating';
+    el.innerHTML=vals.length
+      ? vals.map(v=>`<button type="button" class="qual-chip${selArr.includes(v)?' on':''}" onclick="toggleRateFilter('${kind}',${v})" title="Show files with a ${word} step at ${v} °C/min">${v}</button>`).join('')
+      : `<span class="mini" title="No ${word} scan-rate found in the cached files (method program missing, or cache predates this feature — reload the files to refresh).">no rates</span>`;
+  };
+  rateChips('ffHeatChips',distinctRates('heatRates'),ff.heatSel,'heat');
+  rateChips('ffCoolChips',distinctRates('coolRates'),ff.coolSel,'cool');
+  // Iso-hold chips: discrete hold durations that exist in the cache (click = show files with that hold).
+  const isoEl=document.getElementById('ffIsoChips');
+  if(isoEl){
+    const vals=distinctRates('isoHolds');
+    isoEl.innerHTML=vals.length
+      ? vals.map(v=>`<button type="button" class="qual-chip${ff.isoSel.includes(v)?' on':''}" onclick="toggleIsoFilter(${v})" title="Show files with an isothermal hold of ${v} min">${v}</button>`).join('')
+      : `<span class="mini" title="No isothermal hold found in the cached files (or cache predates this feature — reload the files to refresh).">no holds</span>`;
+  }
+  const chips=document.getElementById('ffQualChips');
+  if(chips){
+    chips.innerHTML=[5,4,3,2,1,0].map(v=>{
+      const on=ff.qual.includes(v);
+      return `<button type="button" class="qual-chip${on?' on':''}" onclick="toggleQualFilter(${v})" title="${qualTitle(v)}">${v===0?'Unrated':'★'+v}</button>`;
+    }).join('');
+  }
 }
 // One-time backfill of derived stats onto records cached before this feature existed.
 let _backfilling=false;
 async function backfillFileStats(){
   if(_backfilling)return;
-  const todo=dbFileCache.filter(f=>f&&f.segCount===undefined);
+  // Recompute for records cached before segment stats / scan-rate stats / iso-hold set existed.
+  const todo=dbFileCache.filter(f=>f&&(f.segCount===undefined||f.ratesComputed===undefined||f.isoHoldsComputed===undefined));
   if(!todo.length)return;
   _backfilling=true;
   let changed=0;
@@ -1129,8 +1258,11 @@ function fileStatLine(f){
   if(Number.isFinite(f.measEpoch)){const md=new Date(f.measEpoch);parts.push(`${md.getFullYear()}/${md.getMonth()+1}/${md.getDate()}`);}
   if(Number.isFinite(f.segCount))parts.push(`${f.segCount} seg`);
   if(Number.isFinite(f.minTemp))parts.push(`min ${f.minTemp.toFixed(0)}°C`);
-  if(Number.isFinite(f.maxIsoMin))parts.push(`iso ${f.maxIsoMin}m`);
+  if(Array.isArray(f.isoHolds)&&f.isoHolds.length)parts.push(`iso ${f.isoHolds.join('/')}m`);
+  else if(Number.isFinite(f.maxIsoMin))parts.push(`iso ${f.maxIsoMin}m`);
   if(Number.isFinite(f.sampleMass))parts.push(`${f.sampleMass.toFixed(2)}mg`);
+  if(Array.isArray(f.heatRates)&&f.heatRates.length)parts.push(`↑${f.heatRates.join('/')}°/min`);
+  if(Array.isArray(f.coolRates)&&f.coolRates.length)parts.push(`↓${f.coolRates.join('/')}°/min`);
   return parts.join(' · ');
 }
 function epochToLocalInput(ep){const d=new Date(ep);if(isNaN(d.getTime()))return '';const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;}
@@ -1146,6 +1278,7 @@ async function openFileMetaEdit(id){
   document.getElementById('fmeIso').value=Number.isFinite(rec.maxIsoMin)?rec.maxIsoMin:'';
   document.getElementById('fmeMass').value=Number.isFinite(rec.sampleMass)?rec.sampleMass:'';
   document.getElementById('fmeTags').value=Array.isArray(rec.tags)?rec.tags.join(', '):'';
+  document.getElementById('fmeQual').value=Number.isFinite(rec.qualification)?String(rec.qualification):'';
   document.getElementById('fileMetaEditModal').classList.add('show');
 }
 function closeFileMetaEdit(){document.getElementById('fileMetaEditModal').classList.remove('show');}
@@ -1165,6 +1298,8 @@ async function saveFileMetaEdit(){
   setNum('sampleMass',document.getElementById('fmeMass').value);
   const tags=document.getElementById('fmeTags').value.split(',').map(t=>t.trim()).filter(Boolean);
   if(tags.length)rec.tags=tags;else delete rec.tags;
+  const qv=document.getElementById('fmeQual').value;
+  if(qv!==''&&Number.isFinite(+qv))rec.qualification=+qv;else delete rec.qualification;
   try{await adapter.putFileRaw(rec);toast('Metadata saved');closeFileMetaEdit();await refreshDbPanels();renderAll();}
   catch(e){toast('Save error: '+e.message,'err');}
 }
@@ -1615,12 +1750,20 @@ function computeFileStats(rawText,fname){
     if(ep!=null){stats.measEpoch=ep;stats.measDate=new Date(ep).toISOString();}
     const segs=assignSegments(rows,methodSteps);
     stats.segCount=segs.length;
+    // Distinct heating / cooling scan rates (°C/min) from the method program — for rate filters & grouping.
+    const rateSet=t=>[...new Set(methodSteps.filter(s=>s.type===t&&Number.isFinite(s.rate)&&s.rate>0).map(s=>+s.rate))].sort((a,b)=>a-b);
+    const heatRates=rateSet('heating'),coolRates=rateSet('cooling');
+    if(heatRates.length){stats.heatRates=heatRates;stats.heatRateMax=heatRates[heatRates.length-1];}
+    if(coolRates.length){stats.coolRates=coolRates;stats.coolRateMax=coolRates[coolRates.length-1];}
+    stats.ratesComputed=1;   // mark so backfill doesn't re-scan runs that legitimately have no rates
     let mn=Infinity;for(const r of rows){if(r.temp<mn)mn=r.temp;}
     if(isFinite(mn))stats.minTemp=+mn.toFixed(2);
-    let iso=0;
-    methodSteps.forEach(st=>{if(st.type==='isothermal'&&isFinite(st.duration))iso=Math.max(iso,st.duration);});
-    if(!iso)segs.forEach(s=>{if(s.type==='isothermal'){const d=(s.tEnd-s.tStart);if(isFinite(d)&&d>iso)iso=d;}});
-    if(iso>0)stats.maxIsoMin=+iso.toFixed(1);
+    // Distinct isothermal hold durations (min): prefer the method program, else segment time spans.
+    let isoDurs=methodSteps.filter(st=>st.type==='isothermal'&&isFinite(st.duration)&&st.duration>0).map(st=>+st.duration);
+    if(!isoDurs.length)isoDurs=segs.filter(s=>s.type==='isothermal').map(s=>s.tEnd-s.tStart).filter(d=>isFinite(d)&&d>0);
+    const isoHolds=[...new Set(isoDurs.map(d=>+d.toFixed(1)))].sort((a,b)=>a-b);
+    if(isoHolds.length){stats.isoHolds=isoHolds;stats.maxIsoMin=isoHolds[isoHolds.length-1];}  // maxIsoMin kept for legacy sort
+    stats.isoHoldsComputed=1;   // mark so backfill upgrades records cached before the multi-hold set existed
   }catch(_e){}
   return stats;
 }
@@ -3248,14 +3391,15 @@ function renderOuterSidebarHtml(sel){
         ${[0,25,50,75,100,150].map(p=>`<button class="btn" onclick="equalMainOffset(${p})" title="${p===0?'Clear the series main offset':`Stack every series at equal ${p}% spacing (of the largest trace amplitude) — one click`}">${p===0?'0':p+'%'}</button>`).join('')}
       </div>
       ${filesInSel.length?`<div class="seg-table-wrap"><table class="seg-table">
-        <thead><tr><th>Series (file)</th><th>Main Off X</th><th>Main Off Y</th></tr></thead>
+        <thead><tr><th>Series (file)</th><th>Quality</th><th>Main Off X</th><th>Main Off Y</th></tr></thead>
         <tbody>
-      ${filesInSel.map(f=>`
+      ${filesInSel.map(f=>{const rec=dbRecByName(f.name);return `
           <tr title="${esc(f.name.replace(/\.[^.]+$/,''))}">
             <td><div class="seg-meta">${esc(f.name.replace(/\.[^.]+$/,''))}</div></td>
+            <td>${rec?qualStarsHtml(rec.id,rec.qualification):'<span class="mini" title="Not in the DB cache — rate it from the DB tab">—</span>'}</td>
             <td><input class="num num-offset" type="number" step="0.05" id="omain-xoff-${f.id}" value="${f.outerMainXOffset||0}"></td>
             <td><input class="num num-offset" type="number" step="0.05" id="omain-yoff-${f.id}" value="${f.outerMainOffset||0}"></td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         </tbody>
       </table></div>`:''}
       <div class="lbl" style="margin-top:6px">Per-step sub offset</div>
