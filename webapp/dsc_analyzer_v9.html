@@ -607,6 +607,22 @@ canvas{width:100%;height:100%}
   </div>
 </div>
 
+<div class="modal-bg" id="importModeModal" style="z-index:960" onclick="if(event.target===this)_importModeResolve(null)">
+  <div class="modal" style="min-width:360px;max-width:94vw">
+    <h3>DB Import</h3>
+    <div id="importModeInfo" style="font-size:12px;color:var(--text2);margin-bottom:.5rem"></div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:.8rem">
+      <strong style="color:#3dba7e">Merge</strong> — add records from the file, skip any already in the DB (same file name / same fit). Your current data is kept.<br>
+      <strong style="color:#e8a040">Replace</strong> — delete ALL current data first, then load the file. Cannot be undone.
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;gap:6px">
+      <button class="btn" onclick="_importModeResolve(null)">Cancel</button>
+      <button class="btn warn" onclick="_importModeResolve('replace')">Replace (wipe)</button>
+      <button class="btn green" onclick="_importModeResolve('merge')">Merge</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="teEditModal" style="z-index:950" onclick="if(event.target===this)closeTeEdit()">
   <div class="modal" style="min-width:340px;max-width:96vw;max-height:92vh;overflow:auto">
     <h3>Edit feature</h3>
@@ -4800,7 +4816,19 @@ const autoBackup={
     this.handle=h;
     const p=await this.queryPerm(h);
     if(p==='granted'){this.setState('on');this.scheduleBackup(8000);}
-    else this.setState('reconnect');
+    // A folder was configured but the browser dropped its permission this session.
+    // Auto-resume on the user's first click (requestPermission needs a gesture) so
+    // backup stays effectively always-on once set up.
+    else{this.setState('reconnect');this._armFirstGestureReconnect();}
+  },
+  _armFirstGestureReconnect(){
+    if(this._gestureArmed)return;this._gestureArmed=true;
+    const h=async()=>{
+      window.removeEventListener('pointerdown',h,true);
+      this._gestureArmed=false;
+      if(this.state==='reconnect'){try{await this.reconnect();}catch(_e){}}
+    };
+    window.addEventListener('pointerdown',h,true);
   },
   async pickFolder(){
     if(!this.supported()){toast('Auto-backup requires Chrome/Edge (File System Access API)','err');return;}
@@ -4882,6 +4910,19 @@ const autoBackup={
     }
   }
 };
+// Clear 3-way import chooser modal (replaces the old confusing OK/Cancel-chained confirms).
+let _importModeResolveFn=null;
+function _importModeResolve(v){
+  const m=document.getElementById('importModeModal');if(m)m.classList.remove('show');
+  const fn=_importModeResolveFn;_importModeResolveFn=null;if(fn)fn(v);
+}
+function askImportMode(info){
+  return new Promise(res=>{
+    _importModeResolveFn=res;
+    const el=document.getElementById('importModeInfo');if(el)el.textContent=info;
+    document.getElementById('importModeModal').classList.add('show');
+  });
+}
 async function importFullDb(file){
   const r=new FileReader();
   r.addEventListener('loadend',async()=>{
@@ -4891,12 +4932,10 @@ async function importFullDb(file){
       if(!Array.isArray(payload.files)||!Array.isArray(payload.projects))throw new Error('Invalid DB dump format');
       if(payload.app&&payload.app!=='dsc')throw new Error(`This looks like a DB dump from "${payload.app}" (not DSC). Import was aborted to avoid DB corruption.`);
       const fc=payload.files.length,pc=payload.projects.length;
+      const ac=Array.isArray(payload.avramiFeatures)?payload.avramiFeatures.length:0;
       const exportedAt=payload.exportedAt?new Date(payload.exportedAt).toLocaleString():'unknown';
-      const msg=`Import DB dump\n\nExported: ${exportedAt}\nFiles: ${fc} / Projects: ${pc}\n\nOK = overwrite (delete all existing data)\nCancel = go to merge confirmation`;
-      const choice=window.confirm(msg);
-      let mode;
-      if(choice){mode='replace';}
-      else{const merge=window.confirm('Import in merge mode?\nFiles/projects with the same name are skipped\n\nOK = merge / Cancel = abort');if(!merge)return;mode='merge';}
+      const mode=await askImportMode(`Exported: ${exportedAt} · Files: ${fc} / Projects: ${pc}${ac?` / Avrami: ${ac}`:''}`);
+      if(!mode)return;   // Cancel / backdrop
       if(mode==='replace'){await adapter.clearFiles();await adapter.clearProjects();if(adapter.clearEvents)await adapter.clearEvents().catch(()=>{});if(adapter.clearAvrami)await adapter.clearAvrami().catch(()=>{});}
       const fileRecordsByName=new Map();
       let fImported=0,fSkipped=0;
