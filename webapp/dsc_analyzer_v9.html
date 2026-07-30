@@ -4743,20 +4743,23 @@ function enrichProjectPayloadFromDump(projectPayload,fileRecordsByName){
 }
 /** Build the full-DB dump payload (same shape DB Import expects). Shared by DB Export and the local-folder mirror. */
 async function buildFullDbPayload(){
-  const [allFiles,allProjects,allEvents]=await Promise.all([
+  const [allFiles,allProjects,allEvents,allAvrami]=await Promise.all([
     adapter.listFiles().catch(()=>[]),
     adapter.listProjects().catch(()=>[]),
-    (adapter.listEvents?adapter.listEvents():Promise.resolve([])).catch(()=>[])
+    (adapter.listEvents?adapter.listEvents():Promise.resolve([])).catch(()=>[]),
+    (adapter.listAvrami?adapter.listAvrami():Promise.resolve([])).catch(()=>[])
   ]);
   const cachedNames=new Set((allFiles||[]).map(f=>f.name).filter(Boolean));
   const projects=(allProjects||[]).map(p=>slimDbProjectRecord(p,cachedNames));
-  return {version:3,app:'dsc',exportedAt:new Date().toISOString(),adapterName:adapter.name,files:allFiles||[],projects,projectsSlimmed:true,thermalEvents:allEvents||[]};
+  return {version:4,app:'dsc',exportedAt:new Date().toISOString(),adapterName:adapter.name,
+    files:allFiles||[],projects,projectsSlimmed:true,
+    thermalEvents:allEvents||[],avramiFeatures:allAvrami||[],fitPresets:fitLoadPresets()};
 }
 async function exportFullDb(){
   try{
     const payload=await buildFullDbPayload();
     downloadJson(`dsc_db_full_${getDateStamp()}.json`,payload);
-    toast(`DB exported — ${payload.files.length} files, ${payload.projects.length} projects`);
+    toast(`DB exported — ${payload.files.length} files, ${payload.projects.length} projects, ${payload.avramiFeatures.length} Avrami`);
   }catch(e){toast('Export error: '+(e.message||e),'err');}
 }
 
@@ -4894,7 +4897,7 @@ async function importFullDb(file){
       let mode;
       if(choice){mode='replace';}
       else{const merge=window.confirm('Import in merge mode?\nFiles/projects with the same name are skipped\n\nOK = merge / Cancel = abort');if(!merge)return;mode='merge';}
-      if(mode==='replace'){await adapter.clearFiles();await adapter.clearProjects();if(adapter.clearEvents)await adapter.clearEvents().catch(()=>{});}
+      if(mode==='replace'){await adapter.clearFiles();await adapter.clearProjects();if(adapter.clearEvents)await adapter.clearEvents().catch(()=>{});if(adapter.clearAvrami)await adapter.clearAvrami().catch(()=>{});}
       const fileRecordsByName=new Map();
       let fImported=0,fSkipped=0;
       const existingFiles=mode==='merge'?await adapter.listFiles():[];
@@ -4923,11 +4926,32 @@ async function importFullDb(file){
           const {id:_e,...rest}=ev;await adapter.saveEvent(rest);seen.add(evKey(ev));eImported++;
         }
       }
+      // avrami_features (v4 dumps). Older dumps lack the array → nothing to import.
+      let aImported=0,aSkipped=0;
+      if(Array.isArray(payload.avramiFeatures)&&adapter.saveAvrami){
+        const existingAv=mode==='merge'&&adapter.listAvrami?await adapter.listAvrami().catch(()=>[]):[];
+        const avKey=e=>`${e.fuid}|${e.Tc!=null?(+e.Tc).toFixed(3):''}|${e.fitX_lo}|${e.fitX_hi}|${e.t0Mode||''}|${e.computedAt||''}`;
+        const seenAv=new Set(existingAv.map(avKey));
+        for(const av of payload.avramiFeatures){
+          if(mode==='merge'&&seenAv.has(avKey(av))){aSkipped++;continue;}
+          const {id:_a,...rest}=av;await adapter.saveAvrami(rest);seenAv.add(avKey(av));aImported++;
+        }
+      }
+      // Fit presets (localStorage). Only touch them when the dump carries them.
+      let prImported=0;
+      if(Array.isArray(payload.fitPresets)){
+        if(mode==='replace'){fitSavePresetsStore(payload.fitPresets);prImported=payload.fitPresets.length;}
+        else{const cur=fitLoadPresets();const names=new Set(cur.map(p=>p.name));
+          payload.fitPresets.forEach(p=>{if(p&&p.name&&!names.has(p.name)){cur.push(p);names.add(p.name);prImported++;}});
+          fitSavePresetsStore(cur);}
+        fitRefreshAllPresetSels();
+      }
       // Reset in-memory event caches so open file panels reload from the fresh store.
-      Object.values(analysisState).forEach(a=>{a.events=null;});
+      Object.values(analysisState).forEach(a=>{a.events=null;a.avrEvents=null;});
       await refreshDbPanels();
-      const skipMsg=(fSkipped+pSkipped+eSkipped)>0?` (${fSkipped+pSkipped+eSkipped} skipped)`:'';
-      toast(`Imported: ${fImported} files, ${pImported} projects, ${eImported} events${skipMsg}`);
+      const skipMsg=(fSkipped+pSkipped+eSkipped+aSkipped)>0?` (${fSkipped+pSkipped+eSkipped+aSkipped} skipped)`:'';
+      const prMsg=prImported>0?`, ${prImported} presets`:'';
+      toast(`Imported: ${fImported} files, ${pImported} projects, ${eImported} events, ${aImported} Avrami${prMsg}${skipMsg}`);
     }catch(err){toast('Import error: '+err.message,'err');}
   });
   try{r.readAsText(file,'UTF-8');}catch(e){toast('Load failed: '+e.message,'err');}
