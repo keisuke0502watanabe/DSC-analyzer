@@ -137,6 +137,13 @@ heating の融解は吸熱前提で `endoSign` を自動推定。誤りはファ
   - **再解析**: `reanalyzeSavedEvent()` が保存版の segment/baseline/axis/endo/type/label をワークベンチに復元 → 微調整して Save で新版追加（元は保持）。数値直接編集（`openTeEdit`）も従来どおり併存。特徴量DB表に「Analyzed」列（computedAt）を追加。
   - 検証: 抽出した実関数で合成ガウスピーク（既知 ΔH=120.3 J/g）を保存→`reconstructEventResult` 復元で T_peak/T_onset/ΔH が**ビット一致**、ΔH は既知値に ≤0.5 J/g 一致、グループキーはベースライン変更でも不変を Node ヘッドレスで確認。構文チェック通過。ブラウザ実機UI確認は環境のブラウザ無応答のため未実施。
 
+## v5: タブUI（2026-07-11）
+縦スクロールが辛いという要望で、`webapp/dsc_analyzer_v5.html`（v4のコピー）を**タブ表示**に刷新。描画ロジックは不変で、既存パネルをタブに割り当て CSS 表示切替する方式。
+- 固定タブ: **DB**（Input＋File Cache＋Stage basket＋Projects）／**結合 Combined**（外側チャート）／**Patterns**（ツリー＋セグメントバスケット）／**子ウィンドウ**（`#patternWindows`）／**特徴量DB**（旧モーダルをタブへ昇格）。
+- 動的タブ: **1シリーズ=1タブ**（`files` ごと、`series:<fid>`、多い時はタブ帯を横スクロール、タブ名=サンプル名/ファイル名、色ドット＋✕で削除）。`#chartsGrid` は1ペインのままCSSで該当 `.chart-outer` のみ表示。
+- 実装: `tabBar`/`tabPanes` を追加、`renderTabs`/`setActiveTab`/`updateTabUI`/`syncTabsAfterRender`/`resizeActivePaneCharts`（display:none中に作られた Chart.js を可視化時に `Chart.getChart(canvas).resize()`）。`renderFileOuters` と `removeFile` 末尾で `syncTabsAfterRender`。旧サイドバー/スプリッタ/side・topレイアウトは撤去（`setDbLayout`等はガード済みで無害）。アクティブタブは localStorage 記憶。初回ロード時は保存タブを尊重、以後シリーズが0→N になったら結合タブへ自動遷移、子ウィンドウを開くと子タブへ遷移。
+- 検証: インラインJS構文OK、6/6 section・div 釣り合い、ID重複/残存なし。実機ブラウザ確認はプレビュー承認制のため未実施（要ユーザ確認）。
+
 ## 検証（Phase 1）
 - 単位換算の厳密性: 合成ガウスピーク（既知 ΔH=120.3 J/g）で **温度軸/時間軸とも ΔHm=120.32 J/g** に一致（`∫dT/β` と `∫dt×60` の整合を確認）。Tonset/Tpeak/Tendset も期待値と一致。
 - 実データ PPP: Tonset 65.9–68.4°C（β形 literature onset ≈66°C と整合）、ΔHm 140–154 J/g（自動ベースラインは裾を切るため手動調整前提）。
