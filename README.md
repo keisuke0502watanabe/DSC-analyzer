@@ -1,26 +1,50 @@
 # DSC-analyzer
 
-Static HTML tools for visualizing and analyzing DSC data.
+Static single-file HTML tool for visualizing and analyzing DSC data
+(heat flow, temperature- and time-dependent workflows, thermal-event and
+isothermal-Avrami feature extraction, IndexedDB cache, project save, DB
+export/import).
 
 ## Current app (use this)
 
-- **`webapp/dsc_analyzer_db_Heatflow_tempdep_timedep.html`** — Database-style analyzer for heat flow with temperature- and time-dependent workflows (IndexedDB cache, project save, DB export/import).
+- **`webapp/dsc_analyzer_v9.html`** — tabbed UI (DB · Combined · Patterns · Series · Feature DB · Avrami) with Analysis Mode (Tm / ΔHm / ΔSm), isothermal Avrami kinetics, and reusable fit presets.
 
-Open it in a normal browser. For reliable behavior (IndexedDB, CDN scripts), serve the folder over HTTP instead of `file://`, for example:
+## Launch on http://localhost (recommended)
+
+Opening the app as `file://` lets Chrome evict the IndexedDB cache (your DB /
+projects) under disk pressure. Serving it over `http://localhost` is a proper
+origin, so the browser keeps your data far more reliably. Double-clickable
+launchers start a local Python server (port **8754**) and open the app:
+
+- **macOS** — double-click **`launchers_mac/DSC-localhost.command`**
+- **Linux / generic** — `bash launchers_mac/DSC-localhost.sh`
+- **Windows** — double-click **`launchers_win/DSC-localhost.bat`**
+
+They serve the repo root and open `http://localhost:8754/webapp/dsc_analyzer_v9.html`.
+You can close the launcher window; the server keeps running.
+
+Manual alternative:
 
 ```bash
-cd webapp
-python3 -m http.server 8766
+python3 -m http.server 8754
 ```
 
-Then open `http://127.0.0.1:8766/dsc_analyzer_db_Heatflow_tempdep_timedep.html`.
+Then open `http://localhost:8754/webapp/dsc_analyzer_v9.html`.
+
+## Moving data between machines (e.g. iPad / remote)
+
+Use **DB Export** to write the whole IndexedDB (files + projects + features)
+to a JSON file, and **DB Import** on the other machine to load it. Fit presets
+are stored per-browser in `localStorage`.
 
 ## Legacy pages
 
-Older and alternate UIs live under **`webapp/old-version/`** (single-file, multi-file, time/temp, earlier DB variants, etc.). They are kept for reference; the maintained entry point is the Heatflow DB page above.
+Older versions (`v4`–`v8`) and alternate UIs live under **`webapp/`** and
+**`webapp/old-version/`**. They are kept for reference; the maintained entry
+point is `dsc_analyzer_v9.html`.
 
 ## Usage
 
-1. Go to `webapp/` (or serve it as above).
-2. Open **`dsc_analyzer_db_Heatflow_tempdep_timedep.html`**.
-3. Load DSC data from the UI (drop zone or file cache).
+1. Launch via the localhost launcher above (or serve `webapp/` over HTTP).
+2. Load DSC data from the UI (drop zone or file cache).
+3. Analyze in the per-series Analysis Mode; save features to the Feature DB.

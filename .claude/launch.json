@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dsc-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8754", "--directory", "/Users/keisukemac/Projects/DSC-analyzer"],
+      "port": 8754,
+      "url": "http://localhost:8754"
+    }
+  ]
+}
