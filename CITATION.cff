@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: DSC-analyzer
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Watanabe
+    given-names: Keisuke
+    orcid: "https://orcid.org/0000-0001-6374-3918"
+    affiliation: "Fukuoka University"
+  - family-names: Tanaka
+    given-names: Ryuki
+    alias: tanabooo
+repository-code: "https://github.com/keisuke0502watanabe/DSC-analyzer"
+license: MIT
+version: 1.0.0
+date-released: "2026-08-05"
+abstract: >-
+  A single-file, browser-based tool for visualizing and analyzing
+  differential scanning calorimetry data. Provides thermal-event
+  extraction (Tm, dHm, dSm), isothermal Avrami kinetics with reusable
+  fit presets, and a local IndexedDB store for files, projects and
+  fitted features, with JSON export/import for portability.
+keywords:
+  - differential scanning calorimetry
+  - thermal analysis
+  - crystallization kinetics
+  - Avrami analysis
+  - polymorphism
