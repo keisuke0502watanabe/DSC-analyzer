@@ -48,3 +48,7 @@ point is `dsc_analyzer_v9.html`.
 1. Launch via the localhost launcher above (or serve `webapp/` over HTTP).
 2. Load DSC data from the UI (drop zone or file cache).
 3. Analyze in the per-series Analysis Mode; save features to the Feature DB.
+
+## License
+
+MIT License — see [LICENSE](LICENSE).
