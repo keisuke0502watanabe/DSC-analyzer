@@ -1,5 +1,8 @@
 # DSC-analyzer
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21812143.svg)](https://doi.org/10.5281/zenodo.21812144)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Static single-file HTML tool for visualizing and analyzing DSC data
 (heat flow, temperature- and time-dependent workflows, thermal-event and
 isothermal-Avrami feature extraction, IndexedDB cache, project save, DB
@@ -49,10 +52,7 @@ point is `dsc_analyzer_v9.html`.
 2. Load DSC data from the UI (drop zone or file cache).
 3. Analyze in the per-series Analysis Mode; save features to the Feature DB.
 
-# DSC-analyzer
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21812144.svg)](https://doi.org/10.5281/zenodo.21812144)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## License
 
