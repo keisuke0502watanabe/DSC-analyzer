@@ -57,3 +57,7 @@ point is `dsc_analyzer_v9.html`.
 ## License
 
 MIT License — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+This work was supported by JSPS KAKENHI Grant Number 23K04683.
