@@ -61,3 +61,6 @@ MIT License — [LICENSE](LICENSE) を参照してください。
 
 本研究は JSPS 科研費 23K04683 の助成を受けたものです。
 
+本リポジトリのコードは Claude (Anthropic) / Claude Code の支援を受けて開発しました。
+解析手法の設計、実測データによる検証、科学的な解釈は著者によるものです。
+

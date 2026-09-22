@@ -61,3 +61,7 @@ MIT License — see [LICENSE](LICENSE).
 ## Acknowledgements
 
 This work was supported by JSPS KAKENHI Grant Number 23K04683.
+
+The code in this repository was developed with the assistance of
+Claude (Anthropic) via Claude Code. The analysis design, validation
+against measured data, and scientific interpretation are the author's own.
