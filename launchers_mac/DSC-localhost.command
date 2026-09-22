@@ -7,7 +7,7 @@
 #  origin, so the browser keeps the data far more reliably.
 # =====================================================================
 PORT=8754
-FILE=webapp/dsc_analyzer_v9.html
+FILE=webapp/dsc_analyzer_v10.html
 
 cd "$(dirname "$0")/.." || exit 1   # serve the repo root, not launchers_mac/
 

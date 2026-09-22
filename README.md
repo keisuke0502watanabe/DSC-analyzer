@@ -10,7 +10,7 @@ export/import).
 
 ## Current app (use this)
 
-- **`webapp/dsc_analyzer_v9.html`** — tabbed UI (DB · Combined · Patterns · Series · Feature DB · Avrami) with Analysis Mode (Tm / ΔHm / ΔSm), isothermal Avrami kinetics, and reusable fit presets.
+- **`webapp/dsc_analyzer_v10.html`** — tabbed UI (DB · **Review** · Combined · Patterns · Series · Feature DB) with Analysis Mode (Tm / ΔHm / ΔSm), isothermal Avrami kinetics, reusable fit presets, and the v10 triage layer — per-file workflow status (raw-checked / analysed / excluded) plus a keyboard-driven Review mode for walking a large cache one run at a time.
 
 ## Launch on http://localhost (recommended)
 
@@ -23,7 +23,7 @@ launchers start a local Python server (port **8754**) and open the app:
 - **Linux / generic** — `bash launchers_mac/DSC-localhost.sh`
 - **Windows** — double-click **`launchers_win/DSC-localhost.bat`**
 
-They serve the repo root and open `http://localhost:8754/webapp/dsc_analyzer_v9.html`.
+They serve the repo root and open `http://localhost:8754/webapp/dsc_analyzer_v10.html`.
 You can close the launcher window; the server keeps running.
 
 Manual alternative:
@@ -32,7 +32,7 @@ Manual alternative:
 python3 -m http.server 8754
 ```
 
-Then open `http://localhost:8754/webapp/dsc_analyzer_v9.html`.
+Then open `http://localhost:8754/webapp/dsc_analyzer_v10.html`.
 
 ## Moving data between machines (e.g. iPad / remote)
 
@@ -44,7 +44,7 @@ are stored per-browser in `localStorage`.
 
 Older versions (`v4`–`v8`) and alternate UIs live under **`webapp/`** and
 **`webapp/old-version/`**. They are kept for reference; the maintained entry
-point is `dsc_analyzer_v9.html`.
+point is `dsc_analyzer_v10.html`.
 
 ## Usage
 

@@ -11,8 +11,10 @@ DB の書き出し・取り込みに対応しています。HTML 1 ファイル�
 
 ## 現行版（これを使う）
 
-- **`webapp/dsc_analyzer_v9.html`** — タブ構成（DB · Combined · Patterns · Series · Feature DB · Avrami）。
-  Analysis Mode（Tm / ΔHm / ΔSm）、等温 Avrami 速度論、再利用可能なフィットプリセットを搭載。
+- **`webapp/dsc_analyzer_v10.html`** — タブ構成（DB · **Review** · Combined · Patterns · Series · Feature DB）。
+  Analysis Mode（Tm / ΔHm / ΔSm）、等温 Avrami 速度論、再利用可能なフィットプリセットに加え、
+  v10 ではファイルごとのワークフロー状態（raw-checked / analysed / excluded）と、
+  大量のキャッシュを 1 測定ずつキーボードで確認していく Review モードを搭載。
 
 ## http://localhost で起動する（推奨）
 
@@ -25,7 +27,7 @@ DB の書き出し・取り込みに対応しています。HTML 1 ファイル�
 - **Linux / 汎用** — `bash launchers_mac/DSC-localhost.sh`
 - **Windows** — **`launchers_win/DSC-localhost.bat`** をダブルクリック
 
-いずれもリポジトリ直下を配信し、`http://localhost:8754/webapp/dsc_analyzer_v9.html` を開きます。
+いずれもリポジトリ直下を配信し、`http://localhost:8754/webapp/dsc_analyzer_v10.html` を開きます。
 ランチャのウィンドウは閉じても構いません（サーバーは動き続けます）。
 
 手動で同じことをする場合:
@@ -34,7 +36,7 @@ DB の書き出し・取り込みに対応しています。HTML 1 ファイル�
 python3 -m http.server 8754
 ```
 
-ブラウザで `http://localhost:8754/webapp/dsc_analyzer_v9.html` を開く。
+ブラウザで `http://localhost:8754/webapp/dsc_analyzer_v10.html` を開く。
 
 ## 別のマシンにデータを移す（iPad / リモートなど）
 
@@ -45,7 +47,7 @@ python3 -m http.server 8754
 ## 旧版
 
 旧バージョン（`v4`〜`v8`）と別 UI は **`webapp/`** および **`webapp/old-version/`** にあります。
-参照用に残しているだけで、保守対象は `dsc_analyzer_v9.html` です。
+参照用に残しているだけで、保守対象は `dsc_analyzer_v10.html` です。
 
 ## 使い方
 

@@ -15,7 +15,7 @@ REM  Requires Python 3 (from python.org or the Microsoft Store).
 REM =====================================================================
 
 set "PORT=8754"
-set "FILE=webapp/dsc_analyzer_v9.html"
+set "FILE=webapp/dsc_analyzer_v10.html"
 
 REM Move to the repo root (one level up from this script's folder)
 cd /d "%~dp0.."
