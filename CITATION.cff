@@ -16,14 +16,16 @@ authors:
     alias: tanabooo
 repository-code: "https://github.com/keisuke0502watanabe/DSC-analyzer"
 license: MIT
-version: 1.0.0
-date-released: "2026-08-05"
+version: 1.1.0
+date-released: "2026-10-23"
 abstract: >-
   A single-file, browser-based tool for visualizing and analyzing
   differential scanning calorimetry data. Provides thermal-event
   extraction (Tm, dHm, dSm), isothermal Avrami kinetics with reusable
   fit presets, and a local IndexedDB store for files, projects and
-  fitted features, with JSON export/import for portability.
+  fitted features, with JSON export/import for portability. A standalone
+  waterfall viewer stacks the cooling, isothermal and heating segments
+  of many runs, read directly from Pyris and Shimadzu files.
 keywords:
   - differential scanning calorimetry
   - thermal analysis
