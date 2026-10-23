@@ -56,9 +56,14 @@ are stored per-browser in `localStorage`.
 
 ## Legacy pages
 
-Older versions (`v4`–`v8`) and alternate UIs live under **`webapp/`** and
-**`webapp/old-version/`**. They are kept for reference; the maintained entry
-point is `dsc_analyzer_v10.html`.
+Older versions live under **`webapp/old-version/`**, one folder per lineage.
+They are kept for reference; the maintained entry point is `dsc_analyzer_v10.html`.
+
+- **`old-version/v4-v9/`** — the lineage right before the current app
+  (`dsc_analyzer_v4`–`v9`, and their predecessors `dsc_analyzer_db_Heatflow_tempdep_timedep` and `_v3`)
+- **`old-version/2026-04_first/`** — the first lineage and alternate UIs from April–May 2026
+  (`dsc_analyzer`, `_v3`, `_v4`, `___v5`, `___v6`, `_db`, `_single`, `_multiple`, …). Its
+  `dsc_analyzer_v4.html` is a different file from the one in `v4-v9/`.
 
 ## Usage
 

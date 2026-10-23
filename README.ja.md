@@ -59,8 +59,14 @@ python3 -m http.server 8754
 
 ## 旧版
 
-旧バージョン（`v4`〜`v8`）と別 UI は **`webapp/`** および **`webapp/old-version/`** にあります。
-参照用に残しているだけで、保守対象は `dsc_analyzer_v10.html` です。
+旧バージョンは **`webapp/old-version/`** に系統ごとにまとめてあります。参照用に残しているだけで、
+保守対象は `dsc_analyzer_v10.html` です。
+
+- **`old-version/v4-v9/`** — 現行版の直前の系統（`dsc_analyzer_v4`〜`v9`、その前身の
+  `dsc_analyzer_db_Heatflow_tempdep_timedep` と `_v3`）
+- **`old-version/2026-04_first/`** — 2026 年 4〜5 月の最初の系統と別 UI（`dsc_analyzer`、`_v3`・`_v4`、
+  `___v5`・`___v6`、`_db`、`_single`、`_multiple` など）。こちらの `dsc_analyzer_v4.html` は
+  `v4-v9/` の同名ファイルとは別物
 
 ## 使い方
 
