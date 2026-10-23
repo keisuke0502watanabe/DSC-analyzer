@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSC waterfall</title>
+<script src="__PLOTLY__"></script>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e3e2dd;--hi:#eef3fb;--acc:#2b6cb0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13.5px/1.55 -apple-system,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:9px 14px;display:flex;align-items:flex-start;gap:12px}
+h1{font-size:15px;margin:0 0 2px}
+.sub{color:var(--mute);font-size:11.5px}
+.lang{margin-left:auto;display:flex;gap:4px;flex:none}
+.bar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.grp>b{font-weight:600;color:var(--mute);font-size:11.5px;margin-right:2px}
+button.chip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:2px 9px;font:inherit;font-size:11.5px;cursor:pointer}
+button.chip[aria-pressed=true]{background:var(--hi);border-color:var(--acc);color:var(--acc)}
+select{border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:11.5px;padding:2px 6px}
+input[type=range]{width:130px;vertical-align:middle}
+.rng{display:inline-flex;gap:3px;align-items:center}
+.rng input[type=range]{width:96px}
+input[type=number]{border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:11.5px;padding:1px 4px}
+#plot{height:calc(100vh - 186px);min-height:420px}
+#msg{padding:30px 14px;color:var(--mute)}
+table{border-collapse:collapse;font-size:11.5px;margin:6px 14px 30px;width:calc(100% - 28px)}
+a.star{text-decoration:none;color:#b9b7b0;font-size:14px}
+a.star.on{color:#d8a200}
+a.star:hover{color:#8a6f00}
+th,td{border:1px solid var(--line);padding:2px 6px;text-align:right;white-space:nowrap}
+th{background:var(--panel);color:var(--mute);font-weight:600}
+td.l,th.l{text-align:left}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="lang">
+    <button class="chip" id="savepng"></button>
+    <button class="chip" id="ja" aria-pressed="true">日本語</button>
+    <button class="chip" id="en" aria-pressed="false">English</button>
+  </div>
+</header>
+<div class="bar">
+  <div class="grp"><b id="l-sample"></b><span id="samples"></span></div>
+  <div class="grp" id="g-ops"><b id="l-ops"></b><span id="ops"></span></div>
+  <div class="grp"><b id="l-steps"></b><span id="steps"></span></div>
+  <div class="grp"><b id="l-types"></b><span id="types"></span></div>
+  <div class="grp"><b id="l-xaxis"></b><select id="xaxis"></select><b id="l-yaxis"></b><select id="yaxis"></select><b id="l-trim"></b><select id="trim"></select></div>
+  <div class="grp"><b id="l-rates"></b><span id="rates"></span></div>
+  <div class="grp"><b id="l-pres"></b><span id="pres"></span></div>
+  <div class="grp"><b id="l-holds"></b><span id="holdsR" class="rng"></span><span id="holds"></span></div>
+  <div class="grp"><b id="l-tas"></b><span id="tasR" class="rng"></span><span id="tas"></span>
+    <button class="chip" id="rep" aria-pressed="false"></button><select id="repRule"></select>
+    <button class="chip" id="starDl"></button></div>
+  <div class="grp"><button class="chip" id="lastonly" aria-pressed="true"></button><button class="chip" id="selAll"></button></div>
+</div>
+<div class="bar">
+  <div class="grp"><b id="l-sort"></b><select id="sort"></select><button class="chip" id="rev" aria-pressed="false"></button></div>
+  <div class="grp"><b id="l-off"></b><select id="lane"></select><input type="range" id="off" min="0" max="400" value="100" title="0 … ×16（振れ幅に対して。左は細かく、右は大きく動く）"><span id="offv" class="sub"></span>
+    <button class="chip" id="connect" aria-pressed="true"></button></div>
+  <div class="grp"><b id="l-gain"></b><input type="range" id="gain" min="-100" max="300" step="1" value="0" title="×0.1 … ×1000（対数目盛）"><span id="gainv" class="sub"></span>
+    <button class="chip" id="gain1"></button></div>
+  <div class="grp"><b id="l-bl"></b><select id="bl"></select><span id="blT"><input type="number" id="blLo" step="1" style="width:58px"> – <input type="number" id="blHi" step="1" style="width:58px"> °C</span></div>
+  <div class="grp"><b id="l-color"></b><select id="color"></select></div>
+  <div class="grp"><b id="l-split"></b><select id="split"></select></div>
+  <div class="grp"><b id="l-norm"></b><select id="norm"></select></div>
+  <div class="grp"><b id="l-height"></b><select id="height"></select></div>
+  <div class="grp"><b id="l-lab"></b><span id="labs"></span><button class="chip" id="labOnce" aria-pressed="true"></button><select id="labPos"></select><select id="labY"></select>
+    <input type="range" id="labDy" min="-40" max="40" step="1" value="0"><span id="labDyv" class="sub"></span>
+    <button class="chip" id="legend" aria-pressed="true"></button></div>
+  <div class="grp"><span id="cnt" class="sub"></span></div>
+</div>
+<div id="plot"></div>
+<div id="msg"></div>
+<table id="tbl"></table>
+
+<script>
+const D = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const SEG = D.segments;
+
+const STR = {
+  ja: {
+    title: "DSC waterfall — 温度 vs 熱流",
+    sample: "試料", ops: "実験者", opsHint: "台帳の operator 列（誰が測ったか）。同じ試料でも人ごとに分けて見る", all: "すべて", steps: "段数", step: n => n + " 段",
+    types: "種類", cooling: "冷却", heating: "昇温", isothermal: "等温", rates: "速度 K/min",
+    xaxis: "横軸", xTemp: "温度", xTseg: "時間（段の開始から）", xTrun: "時間（ラン開始から）",
+    yaxis: "縦軸", yHf: "熱流", yTemp: "温度", yHint: "温度にすると積み上げ・強度・ベースラインは使わず、実測温度をそのまま描く",
+    rngHint: "スライダで範囲を絞る（両端を含む）。チップで個別に外すこともできる",
+    trim: "過渡カット", trimHint: "段の切り替わりの過渡を先頭から何分落とすか。落とした先頭で 0 に合わせ直す",
+    holds: "保持時間 min", holdHint: "Ta の等温段の長さ（5 分刻みで絞り込み。表とホバーは実測値）",
+    tas: "保持温度 Ta °C", taHint: "最後の昇温の直前の等温段の温度（ラン単位）",
+    rep: "Ta ごとに 1 本", repHint: "同じ Ta のランが複数あるとき、代表の 1 本だけを表示する",
+    repNew: "代表＝最新", repMass: "代表＝質量が最大", repFirst: "代表＝最初", repStar: "代表＝星を付けたもの",
+    gain: "強度", gain1: "等倍に戻す", labPos: "ラベルの位置",
+    bl: "ベースライン", blNone: "なし（段頭を 0）", blEnds: "両端を直線で結ぶ", blTemps: "2 点の温度で直線",
+    blHint: "低温側と高温側の 2 点（各点のまわりの中央値）を直線で結んで差し引く。温度が空欄なら段の端を使う",
+    blFoot: (m, lo, hi) => m === "ends" ? "直線ベースライン（両端）" : `直線ベースライン（${lo} °C – ${hi} °C）`,
+    lpLI: "左・内側", lpLO: "左・外側", lpRI: "右・内側", lpRO: "右・外側", labDy: "上下",
+    labY: "縦の基準", lyBase: "ベースライン", lyMin: "最小値", lyMax: "最大値", lyEnd: "端の値",
+    starDl: "星を書き出す", starCol: "代表",
+    starHint: "星を付けたランが「代表＝星を付けたもの」で選ばれる。書き出した CSV を notes/dsc_representatives.csv に置くと次回から既定になる",
+    pres: "前の最高温度 °C", preHint: "この段が始まるまでに到達した最高温度", preHover: "前の最高温度",
+    sortPre: "前の最高温度（実測）",
+    lastonly: "その種類の最後の段だけ",
+    selAll: "絞り込みを全部戻す", selAllHint: "実験者・速度・前の最高温度・保持時間・Ta を全部選び直す（試料・段数・種類・「最後の段だけ」はそのまま）",
+    sort: "並び", sortTa: "段の開始温度 Ta（設定値）", sortTmin: "到達最低温度 Tmin（実測）",
+    sortDate: "日付", sortMass: "質量", sortRate: "速度", sortComp: "組成", rev: "逆順",
+    off: "積み上げ", norm: "熱流", normMg: "mW/mg", normRaw: "mW（生）",
+    lab: "ラベル", labHint: "曲線の横と凡例に出す項目（複数選べる。何も選ばなければ曲線の横には出さない）",
+    labF: {key:"並びの値", Ta:"Ta", hold:"保持時間", rate:"速度", mass:"質量", date:"日付", id:"ラン ID", sample:"試料", op:"実験者", comp:"組成"},
+    labOnce: "重複は省く", labOnceHint: "隣の曲線と同じラベルは曲線の横に出さない（凡例には全部出す）",
+    savepng: "PNG 保存", savepngHint: "いま表示している図を、条件の脚注つきで PNG に書き出す",
+    allSel: "すべて", footNote: "段頭を 0・発熱上向き・mW/mg",
+    legend: "凡例", legendHint: "凡例をクリックすると曲線を消せる。多いときは凡例の中をスクロール",
+    height: "高さ", hFit: "画面に合わせる", hTall: "1 本 18 px（縦スクロール）",
+    color: "配色", colType: "冷却＝青 / 昇温＝赤", colSeq: "並び順（黄緑→紫）", colRate: "速度ごと",
+    perColumn: "列ごと", split: "並べ方", splitOne: "1 枚にまとめる", splitSample: "試料ごとに横に並べる",
+    lane: "積み上げ", laneRun: "ラン（シリーズ）ごと", laneSeg: "段ごと",
+    connect: "折り返しをつなぐ", connectHint: "同じランの冷却の終わりと昇温の始まりを点線で結ぶ",
+    cnt: (n, m, r) => `${n} 段 / ${m} 段（${r} ラン）`,
+    empty: "条件に合う段がありません",
+    axX: m => m==="temp" ? "温度 / °C" : m==="tseg" ? "時間 / min（段の開始から）" : "時間 / min（ラン開始から）", axY: (raw, off) => "熱流 / " + (raw ? "mW" : "mW mg⁻¹") + "（発熱上向き" + (off ? "、オフセット）" : "）"),
+    th: ["並びの値", "ラン", "日付", "質量 mg", "段数", "種類", "K/min", "Ta °C", "保持 min", "前の最高 °C", "1 段目 °C", "開始 °C", "終了 °C", "Tmin °C", "最大発熱 °C", "最大吸熱 °C", "熱履歴"],
+    mgUnit: " mg", rateUnit: " K/min"
+  },
+  en: {
+    title: "DSC waterfall — heat flow vs temperature",
+    sample: "Sample", ops: "Operator", opsHint: "who measured the run (operator column of the ledger)", all: "all", steps: "Steps", step: n => n + "-step",
+    types: "Segment", cooling: "cooling", heating: "heating", isothermal: "isothermal", rates: "Rate K/min",
+    xaxis: "x axis", xTemp: "temperature", xTseg: "time (from the segment start)", xTrun: "time (from the run start)",
+    yaxis: "y axis", yHf: "heat flow", yTemp: "temperature", yHint: "with temperature, offset, gain and baseline are off and the measured temperature is drawn as is",
+    rngHint: "narrow the range with the sliders (both ends included); the chips still toggle single values",
+    trim: "Cut after step", trimHint: "how much of the transient after each step change to cut; the curve is re-zeroed on what is left",
+    holds: "Hold time min", holdHint: "length of the isothermal step at Ta (filtered in 5-min bins; the table and hover show the measured value)",
+    tas: "Hold Ta °C", taHint: "temperature of the isothermal step just before the final heating (per run)",
+    rep: "one run per Ta", repHint: "when several runs share a Ta, show only the representative one",
+    repNew: "newest", repMass: "largest mass", repFirst: "oldest", repStar: "starred",
+    gain: "Gain", gain1: "reset to 1×", labPos: "label position",
+    bl: "Baseline", blNone: "none (zero at segment start)", blEnds: "straight line between the ends", blTemps: "straight line through 2 temperatures",
+    blHint: "subtract a straight line through a low-T and a high-T point (median around each point); a blank temperature uses the segment end",
+    blFoot: (m, lo, hi) => m === "ends" ? "linear baseline (ends)" : `linear baseline (${lo} °C – ${hi} °C)`,
+    lpLI: "left, inside", lpLO: "left, outside", lpRI: "right, inside", lpRO: "right, outside", labDy: "nudge",
+    labY: "vertical anchor", lyBase: "baseline", lyMin: "minimum", lyMax: "maximum", lyEnd: "value at the end",
+    starDl: "export stars", starCol: "rep.",
+    starHint: "a starred run is the one picked by \"representative = starred\"; save the exported CSV as notes/dsc_representatives.csv to make it the default",
+    pres: "Max T before °C", preHint: "highest temperature reached before this segment starts", preHover: "max T before",
+    sortPre: "max T before this segment (measured)",
+    lastonly: "last segment of its kind only",
+    selAll: "reset filters", selAllHint: "select every operator, rate, max T before, hold time and Ta again (sample, steps, segment type and \"last segment only\" stay as they are)",
+    sort: "Sort by", sortTa: "segment start T (programmed)", sortTmin: "lowest T reached (measured)",
+    sortDate: "date", sortMass: "mass", sortRate: "rate", sortComp: "composition", rev: "reverse",
+    off: "Offset", norm: "Heat flow", normMg: "mW/mg", normRaw: "mW (raw)",
+    lab: "Label", labHint: "what to write next to each curve and in the legend (pick several; none = no labels on the curves)",
+    labF: {key:"sort value", Ta:"Ta", hold:"hold time", rate:"rate", mass:"mass", date:"date", id:"run ID", sample:"sample", op:"operator", comp:"composition"},
+    labOnce: "skip repeats", labOnceHint: "do not repeat a label identical to the neighbouring curve's (the legend keeps all)",
+    savepng: "Save PNG", savepngHint: "download the plot as it is now, with the filter conditions written underneath",
+    allSel: "all", footNote: "each segment zeroed at its start, exo up, mW/mg",
+    legend: "Legend", legendHint: "click an entry to hide that curve; scroll inside the legend when there are many",
+    height: "Height", hFit: "fit the window", hTall: "18 px per curve (scroll)",
+    color: "Colour", colType: "cooling = blue / heating = red", colSeq: "by sort order (viridis)", colRate: "by rate",
+    perColumn: "per column", split: "Layout", splitOne: "one panel", splitSample: "one panel per sample",
+    lane: "Stack by", laneRun: "run (series)", laneSeg: "segment",
+    connect: "join turning points", connectHint: "dotted line from the end of cooling to the start of heating of the same run",
+    cnt: (n, m, r) => `${n} of ${m} segments (${r} runs)`,
+    empty: "No segment matches the filters",
+    axX: m => m==="temp" ? "temperature / °C" : m==="tseg" ? "time / min (from the segment start)" : "time / min (from the run start)", axY: (raw, off) => "heat flow / " + (raw ? "mW" : "mW mg⁻¹") + "  (exo up" + (off ? ", offset)" : ")"),
+    th: ["sort value", "run", "date", "mass mg", "steps", "segment", "K/min", "Ta °C", "hold min", "max T before °C", "1st step °C", "start °C", "end °C", "Tmin °C", "max exo °C", "max endo °C", "thermal history"],
+    mgUnit: " mg", rateUnit: " K/min"
+  }
+};
+let L = STR.ja;
+
+const state = {lang:"ja", samples:new Set(), ops:new Set(), steps:new Set(), types:new Set(["heating"]), rates:new Set(), pres:new Set(), tas:new Set(), holds:new Set(), last:true, rep:false, repRule:"new",
+               sort:"Ta", rev:false, off:1.0, gain:1.0, bl:"none", blLo:null, blHi:null, labPos:"li", labY:"base", labDy:0, labs:new Set(["key"]), labOnce:true, stars:new Set(), xaxis:"temp", yaxis:"hf", trim:0.6, norm:"mg", legend:true, height:"fit", color:"type", lane:"run", connect:true, split:"sample"};
+
+function uniq(a){ return [...new Set(a)].sort((x,y)=>x-y); }
+
+// 試料の並びはアルキル鎖長の順（C8TAG → C10TAG → C14TAG → PPP = C16）
+const CHAIN = {PPP:16, MMM:14, SSS:18, LLL:12, OOO:18, CB:99};
+function chainOf(name){
+  const m = /^C(\d+)TAG$/i.exec(name);
+  if (m) return +m[1];
+  if (CHAIN[name] != null) return CHAIN[name];
+  return 999;
+}
+function bySampleOrder(a, b){
+  const x = chainOf(a), y = chainOf(b);
+  return x !== y ? x - y : (a < b ? -1 : a > b ? 1 : 0);
+}
+function sampleNames(list){ return [...new Set(list.map(s => s.sample))].sort(bySampleOrder); }
+
+function chips(host, values, key, fmt){
+  $(host).innerHTML = values.map(v=>`<button class="chip" data-v="${v}" aria-pressed="${state[key].has(typeof v==="number"?v:String(v))}">${fmt?fmt(v):v}</button>`).join("");
+  $(host).querySelectorAll(".chip").forEach(b=>b.onclick=()=>{
+    const raw=b.dataset.v, v=isNaN(Number(raw))?raw:Number(raw), s=state[key];
+    if (s.has(v)) s.delete(v); else s.add(v);
+    b.setAttribute("aria-pressed", s.has(v));
+    if (key === "samples"){ rebuildFilters(); setLang(state.lang); return; }
+    // 実験者を切り替えたら、段数の既定もその実験者のランから選び直す（段数のチップは試料の全段数のまま）。
+    // 誰も選ばれていないときは段数をそのまま残す
+    if (key === "ops"){
+      const pool = SEG.filter(x => inSample(x) && s.has(opOf(x)));
+      if (pool.length){ state.steps = defaultSteps(pool); chips("#steps", uniq(SEG.filter(inSample).map(x=>x.nseg)), "steps", L.step); }
+    }
+    if (RANGE[key]) RANGE[key]();
+    draw();
+  });
+}
+
+// 値が多い絞り込み（Ta・保持時間）の範囲スライダ。2 本のつまみ（下限・上限）で、並べた値の番号を選ぶ。
+// 動かすと範囲内の値だけをチップでも選び直す。「?」（値が無いラン）は範囲と無関係にそのまま残す
+const RANGE = {};
+function rangeCtl(host, chipHost, key, values, unit){
+  const el = $(host);
+  delete RANGE[key];
+  if (values.length < 3){ el.innerHTML = ""; return; }
+  el.innerHTML = `<input type="range" min="0" max="${values.length-1}" step="1"><input type="range" min="0" max="${values.length-1}" step="1"><span class="sub"></span>`;
+  el.title = L.rngHint;
+  const [rlo, rhi] = el.querySelectorAll("input"), out = el.querySelector("span");
+  // チップ側で選び直したときは、選ばれている値の最小・最大につまみを合わせる
+  const sync = () => {
+    const on = values.map((v,i) => state[key].has(v) ? i : -1).filter(i => i >= 0);
+    rlo.value = on.length ? on[0] : 0; rhi.value = on.length ? on[on.length-1] : values.length-1;
+    out.textContent = on.length ? `${values[+rlo.value]} – ${values[+rhi.value]}${unit}` : "—";
+  };
+  const apply = moved => {
+    let lo = +rlo.value, hi = +rhi.value;
+    if (lo > hi){ if (moved === rlo) hi = lo; else lo = hi; rlo.value = lo; rhi.value = hi; }
+    const had = state[key].has("?");
+    state[key] = new Set(values.slice(lo, hi+1));
+    if (had) state[key].add("?");
+    $(chipHost).querySelectorAll(".chip").forEach(b => {
+      const raw = b.dataset.v; b.setAttribute("aria-pressed", state[key].has(isNaN(Number(raw)) ? raw : Number(raw)));
+    });
+    out.textContent = `${values[lo]} – ${values[hi]}${unit}`;
+    draw();
+  };
+  rlo.oninput = () => apply(rlo); rhi.oninput = () => apply(rhi);
+  RANGE[key] = sync;
+  sync();
+}
+
+function setLang(lang){
+  state.lang = lang; L = STR[lang];
+  document.documentElement.lang = lang;
+  $("#ja").setAttribute("aria-pressed", lang === "ja");
+  $("#en").setAttribute("aria-pressed", lang === "en");
+  document.title = L.title;
+  $("#title").textContent = L.title;
+  $("#subtitle").textContent = lang === "ja" ? D.subtitle_ja : D.subtitle_en;
+  $("#l-ops").textContent = L.ops; $("#l-ops").title = L.opsHint;
+  $("#l-sample").textContent = L.sample; $("#l-steps").textContent = L.steps;
+  $("#l-types").textContent = L.types;   $("#l-rates").textContent = L.rates;
+  $("#l-pres").textContent = L.pres;     $("#l-pres").title = L.preHint;
+  $("#l-tas").textContent = L.tas;       $("#l-tas").title = L.taHint;
+  $("#l-holds").textContent = L.holds;   $("#l-holds").title = L.holdHint;
+  $("#rep").textContent = L.rep;         $("#rep").title = L.repHint;
+  $("#l-sort").textContent = L.sort;     $("#l-off").textContent = L.off;
+  $("#l-norm").textContent = L.norm;     $("#l-lab").textContent = L.lab;
+  $("#lastonly").textContent = L.lastonly;
+  $("#selAll").textContent = L.selAll; $("#selAll").title = L.selAllHint;
+  $("#rev").textContent = L.rev;
+  const opts = (host, list, cur) => {
+    $(host).innerHTML = list.map(([v,t])=>`<option value="${v}"${v===cur?" selected":""}>${t}</option>`).join("");
+  };
+  opts("#sort", [["Ta",L.sortTa],["Tmin",L.sortTmin],["Tpre",L.sortPre],["date",L.sortDate],["mass",L.sortMass],["rate",L.sortRate]].concat(SEG.some(s => s.comp != null) ? [["comp",L.sortComp]] : []), state.sort);
+  opts("#norm", [["mg",L.normMg],["raw",L.normRaw]], state.norm);
+  opts("#repRule", [["new",L.repNew],["mass",L.repMass],["first",L.repFirst],["star",L.repStar]], state.repRule);
+  opts("#labPos", [["li",L.lpLI],["lo",L.lpLO],["ri",L.lpRI],["ro",L.lpRO]], state.labPos);
+  opts("#labY", [["base",L.lyBase],["min",L.lyMin],["max",L.lyMax],["end",L.lyEnd]], state.labY);
+  $("#l-gain").textContent = L.gain; $("#gain1").textContent = L.gain1;
+  $("#l-bl").textContent = L.bl; $("#l-bl").title = L.blHint;
+  opts("#bl", [["none",L.blNone],["ends",L.blEnds],["temps",L.blTemps]], state.bl);
+  $("#starDl").textContent = L.starDl; $("#starDl").title = L.starHint;
+
+  $("#l-lab").title = L.labHint;
+  chips("#labs", LABF.filter(f => f !== "comp" || SEG.some(s => s.comp != null)), "labs", f => L.labF[f]);
+  $("#labOnce").textContent = L.labOnce; $("#labOnce").title = L.labOnceHint;
+  $("#labOnce").setAttribute("aria-pressed", state.labOnce);
+  $("#legend").textContent = L.legend; $("#legend").title = L.legendHint;
+  $("#savepng").textContent = L.savepng; $("#savepng").title = L.savepngHint;
+  $("#l-color").textContent = L.color;
+  opts("#color", [["type",L.colType],["seq",L.colSeq],["rate",L.colRate]], state.color);
+  opts("#lane", [["run",L.laneRun],["seg",L.laneSeg]], state.lane);
+  $("#l-split").textContent = L.split;
+  opts("#split", [["sample",L.splitSample],["one",L.splitOne]], state.split);
+  $("#connect").textContent = L.connect; $("#connect").title = L.connectHint;
+  $("#l-height").textContent = L.height;
+  opts("#height", [["fit",L.hFit],["tall",L.hTall]], state.height);
+  chips("#samples", sampleNames(SEG), "samples");
+  chips("#types", ["cooling","isothermal","heating"], "types",
+        v => v==="cooling" ? L.cooling : v==="heating" ? L.heating : L.isothermal);
+  $("#l-xaxis").textContent = L.xaxis;
+  opts("#xaxis", [["temp",L.xTemp],["tseg",L.xTseg],["trun",L.xTrun]], state.xaxis);
+  $("#l-yaxis").textContent = L.yaxis; $("#l-yaxis").title = L.yHint;
+  opts("#yaxis", [["hf",L.yHf],["temp",L.yTemp]], state.yaxis);
+  $("#tasR").title = $("#holdsR").title = L.rngHint;
+  $("#l-trim").textContent = L.trim; $("#l-trim").title = L.trimHint;
+  opts("#trim", [["0.15","0.15 min"],["0.3","0.3 min"],["0.6","0.6 min"],["1","1 min"],["2","2 min"]], String(state.trim));
+  const pool = SEG.filter(inSample);
+  chips("#steps", uniq(pool.map(s=>s.nseg)), "steps", L.step);
+  try { localStorage.setItem("dsc_waterfall_lang", lang); } catch(e) {}
+  draw();
+}
+
+function init(){
+  const samples = sampleNames(SEG);
+  state.samples = new Set([samples.includes("C8TAG") ? "C8TAG" : samples[0]]);
+  // 生成側が初期表示を決められる（集合の項目は配列で渡す）
+  Object.entries(D.init || {}).forEach(([k, v]) => { state[k] = state[k] instanceof Set ? new Set(v) : v; });
+  // 以前の --init の lab（1 つだけ選ぶ形）は、複数選ぶ形に読み替える
+  if (typeof state.lab === "string"){
+    const OLD = {keyOnce:[["key"],true], key:[["key"],false], rate:[["rate"],true], keyRate:[["key","rate"],true], id:[["id"],true], none:[[],true]};
+    const [f, once] = OLD[state.lab] || OLD.keyOnce;
+    state.labs = new Set(f); state.labOnce = once; delete state.lab;
+  }
+  rebuildFilters();
+  // 絞り込みを全部選び直す。rebuildFilters は段数も既定に戻すので、段数だけ退避して戻す
+  $("#selAll").onclick = () => {
+    const steps = new Set(state.steps);
+    rebuildFilters();
+    state.steps = steps;
+    chips("#steps", uniq(SEG.filter(inSample).map(s=>s.nseg)), "steps", L.step);
+    draw();
+  };
+  $("#lastonly").onclick = () => { state.last = !state.last; $("#lastonly").setAttribute("aria-pressed", state.last); draw(); };
+  $("#rev").onclick = () => { state.rev = !state.rev; $("#rev").setAttribute("aria-pressed", state.rev); draw(); };
+  $("#legend").onclick = () => { state.legend = !state.legend; $("#legend").setAttribute("aria-pressed", state.legend); draw(); };
+  $("#connect").onclick = () => { state.connect = !state.connect; $("#connect").setAttribute("aria-pressed", state.connect); draw(); };
+  $("#rep").onclick = () => { state.rep = !state.rep; $("#rep").setAttribute("aria-pressed", state.rep); draw(); };
+  $("#trim").onchange = () => { state.trim = +$("#trim").value; draw(); };
+  $("#xaxis").onchange = () => {
+    const was = state.xaxis;
+    state.xaxis = $("#xaxis").value;
+    // 温度 ↔ 時間を切り替えた直後は種類を選び直す（時間＝等温だけ、温度＝昇温だけ）。
+    // 時間どうし（段の開始から ↔ ラン開始から）の切り替えでは、選んでいる種類をそのまま残す
+    if ((was === "temp") !== (state.xaxis === "temp")){
+      state.types = new Set([state.xaxis === "temp" ? "heating" : "isothermal"]);
+      $("#types").querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", state.types.has(b.dataset.v)));
+    }
+    draw();
+  };
+  $("#yaxis").onchange = () => { state.yaxis = $("#yaxis").value; draw(); };
+  $("#labOnce").onclick = () => { state.labOnce = !state.labOnce; $("#labOnce").setAttribute("aria-pressed", state.labOnce); draw(); };
+  ["sort","norm","height","color","lane","repRule","split"].forEach(k => $("#"+k).onchange = () => { state[k] = $("#"+k).value; draw(); });
+  loadStars();
+  $("#off").oninput = () => { state.off = Math.pow(+$("#off").value/100, 2); draw(); };  // 二乗目盛 0…×16（真ん中付近が ×1〜×4）
+  const readouts = () => {
+    const g = $("#gainv"), d = $("#labDyv");
+    if (g) g.textContent = "×" + (state.gain < 10 ? state.gain.toFixed(2) : state.gain.toFixed(state.gain < 100 ? 1 : 0));
+    if (d) d.textContent = (state.labDy > 0 ? "+" : "") + state.labDy + " px";
+  };
+  $("#gain").oninput = () => { state.gain = Math.pow(10, +$("#gain").value/100); readouts(); draw(); };  // 対数目盛 ×0.1…×1000
+  $("#gain1").onclick = () => { state.gain = 1; $("#gain").value = 0; readouts(); draw(); };
+  $("#labDy").oninput = () => { state.labDy = +$("#labDy").value; readouts(); draw(); };
+  $("#labPos").onchange = () => { state.labPos = $("#labPos").value; draw(); };
+  $("#labY").onchange = () => { state.labY = $("#labY").value; draw(); };
+  const blShow = () => { $("#blT").style.display = state.bl === "temps" ? "" : "none"; };
+  $("#bl").onchange = () => {
+    state.bl = $("#bl").value;
+    // 温度が空なら、いま見えている段の温度範囲から少し内側を既定にする
+    if (state.bl === "temps" && state.blLo == null && state.blHi == null){
+      const ts = pick().flatMap(s => [s.Tmin, ...[s.T[0], s.T[s.T.length-1]]]).filter(v => v != null);
+      if (ts.length){ state.blLo = Math.round(Math.min(...ts)) + 5; state.blHi = Math.round(Math.max(...ts)) - 5;
+        $("#blLo").value = state.blLo; $("#blHi").value = state.blHi; }
+    }
+    blShow(); draw();
+  };
+  const blNum = v => v === "" ? null : +v;
+  $("#blLo").onchange = () => { state.blLo = blNum($("#blLo").value); draw(); };
+  $("#blHi").onchange = () => { state.blHi = blNum($("#blHi").value); draw(); };
+  blShow();
+  readouts();
+  $("#starDl").onclick = () => exportStars();
+  $("#savepng").onclick = savePng;
+  $("#ja").onclick = () => setLang("ja");
+  $("#en").onclick = () => setLang("en");
+  let saved = null;
+  try { saved = localStorage.getItem("dsc_waterfall_lang"); } catch(e) {}
+  setLang(saved === "en" ? "en" : "ja");
+}
+
+function opOf(s){ return s.op || "?"; }
+function inSample(s){ return state.samples.size === 0 || state.samples.has(s.sample); }
+
+// 既定の段数は試料 × 実験者ごとに 1 つ選び、その和集合にする（3 段があれば 3 段、無ければ本数が一番多い段数）。
+// 和集合にしないと、3 段を持つ C8TAG と他の試料を一緒に選んだときや、同じ試料を段数の違う
+// 2 人の実験者（6 段と 3・4 段など）で一緒に選んだときに片方しか出ない。数えるのはいま選んでいる種類
+// （昇温など）の段だけ。そうしないと、昇温を含まない 3 段（冷却→等温）が選ばれて何も出ない
+function defaultSteps(pool){
+  const bestOf = list => {
+    const typed = list.filter(s => state.types.has(s.type));
+    if (typed.length) list = typed;
+    const n = {}; list.forEach(s => n[s.nseg] = (n[s.nseg]||0) + 1);
+    const ks = uniq(list.map(s => s.nseg));
+    return ks.includes(3) ? 3 : ks.reduce((a,b)=>(n[b]||0)>(n[a]||0)?b:a, ks[0]);
+  };
+  const by = {};
+  pool.forEach(s => { const k = s.sample + "|" + opOf(s); (by[k] = by[k] || []).push(s); });
+  return new Set(Object.keys(by).map(k => bestOf(by[k])).filter(v => v != null));
+}
+
+function rebuildFilters(){
+  const pool = SEG.filter(inSample);
+  const steps = uniq(pool.map(s=>s.nseg)), rates = uniq(pool.map(s=>s.rate));
+  state.steps = defaultSteps(pool);
+  state.rates = new Set(rates);
+  chips("#rates", rates, "rates");
+  const pres = uniq(pool.map(s=>s.Tpre5));
+  state.pres = new Set(pres);
+  // 実験者。台帳に operator が無い古いデータ（全部「?」）ではチップの列ごと隠す
+  const ops = [...new Set(pool.map(opOf))].sort((a,b) => a === "?" ? 1 : b === "?" ? -1 : a < b ? -1 : a > b ? 1 : 0);
+  state.ops = new Set(ops);
+  chips("#ops", ops, "ops");
+  $("#g-ops").style.display = ops.length === 1 && ops[0] === "?" ? "none" : "";
+  chips("#pres", pres, "pres");
+  const hs = uniq(pool.map(s=>s.hold5).filter(v=>v!=null));
+  state.holds = new Set(hs);
+  if (pool.some(s=>s.hold5==null)) state.holds.add("?");
+  chips("#holds", hs.concat(pool.some(s=>s.hold5==null)?["?"]:[]), "holds");
+  rangeCtl("#holdsR", "#holds", "holds", hs, " min");
+  const tas = uniq(pool.map(s=>s.Ta1).filter(v=>v!=null));
+  state.tas = new Set(tas);
+  if (pool.some(s=>s.Ta1==null)) state.tas.add("?");
+  chips("#tas", tas.concat(pool.some(s=>s.Ta1==null)?["?"]:[]), "tas");
+  rangeCtl("#tasR", "#tas", "tas", tas, " °C");
+}
+
+const STAR_KEY = "dsc_waterfall_stars";
+function loadStars(){
+  // ページに埋め込まれた既定（notes/dsc_representatives.csv 由来）＋ この端末で付けたもの
+  (D.stars || []).forEach(id => state.stars.add(id));
+  try {
+    const v = localStorage.getItem(STAR_KEY);
+    if (v) JSON.parse(v).forEach(id => state.stars.add(id));
+  } catch (e) { /* file:// では使えないことがある。既定だけで動く */ }
+}
+function saveStars(){
+  try { localStorage.setItem(STAR_KEY, JSON.stringify([...state.stars])); } catch (e) {}
+}
+function toggleStar(id){
+  if (state.stars.has(id)) state.stars.delete(id); else state.stars.add(id);
+  saveStars(); draw();
+}
+// ファイルの書き出し。claude.ai のギャラリー（Artifact）ではリンクのダウンロードが効かないので
+// downloads capability を使う（保存前に確認が出る）。ローカルの HTML では window.claude が無いので従来のリンク
+const DL = window.claude && window.claude.use ? window.claude.use("downloads").catch(() => null) : Promise.resolve(null);
+async function saveFile(filename, blob){
+  const dl = await DL;
+  if (dl){
+    try { await dl.save({filename, data: blob}); }
+    catch (e) { if (e && e.code !== "declined") $("#msg").textContent = filename + ": " + (e.message || e.code || e); }
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function exportStars(){
+  const lines = ["# DSC ウォーターフォールの代表ラン。1 行 1 meas_id。# で始まる行は注記。",
+                 "# notes/dsc_representatives.csv に置くと、次に作り直したとき既定で星が付く。",
+                 ...[...state.stars].sort()];
+  saveFile("dsc_representatives.csv", new Blob([lines.join("\n") + "\n"], {type:"text/csv;charset=utf-8"}));
+}
+
+function pick(){
+  let out = SEG.filter(s => inSample(s) && state.steps.has(s.nseg) && state.types.has(s.type)
+                      && state.ops.has(opOf(s)) && state.rates.has(s.rate) && state.pres.has(s.Tpre5)
+                      && state.tas.has(s.Ta1 == null ? "?" : s.Ta1)
+                      && state.holds.has(s.hold5 == null ? "?" : s.hold5) && (!state.last || s.last));
+  if (state.rep){
+    // 同じ Ta にランが複数あるときは 1 本だけ残す
+    const byTa = new Map();       // 試料 × Ta ごとに 1 本（試料をまたいで 1 本にすると他の試料が消える）
+    out.forEach(s => { const t = s.sample + "|" + (s.Ta1 == null ? "?" : s.Ta1);
+      if (!byTa.has(t)) byTa.set(t, new Map());
+      if (!byTa.get(t).has(s.id)) byTa.get(t).set(s.id, s); });
+    const keep = new Set();
+    byTa.forEach(runs => {
+      const list = [...runs.values()];
+      const newest = (a,b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : (a.id > b.id ? -1 : 1));
+      list.sort((a,b) => state.repRule === "mass" ? (b.mass||0) - (a.mass||0)
+                       : state.repRule === "first" ? (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id < b.id ? -1 : 1))
+                       // 星を付けたものを先頭に。無い（または複数ある）ときは最新で決める
+                       : state.repRule === "star"
+                         ? ((state.stars.has(b.id) ? 1 : 0) - (state.stars.has(a.id) ? 1 : 0)) || newest(a,b)
+                         : newest(a,b));
+      keep.add(list[0].id);
+    });
+    out = out.filter(s => keep.has(s.id));
+  }
+  return out;
+}
+
+function keyOf(s){
+  return state.sort === "Tmin" ? s.Tmin : state.sort === "Tpre" ? s.Tpre
+       : state.sort === "Ta" ? (s.fromT == null ? s.Tmin : s.fromT)
+       : state.sort === "mass" ? (s.mass||0) : state.sort === "rate" ? s.rate
+       : state.sort === "comp" ? (s.comp == null ? -1 : s.comp) : s.date;
+}
+function keyLabel(s){
+  return state.sort === "date" ? s.date
+       : state.sort === "mass" ? (s.mass==null?"?":s.mass.toFixed(2)+L.mgUnit)
+       : state.sort === "rate" ? s.rate+L.rateUnit
+       : state.sort === "comp" ? (s.compLabel || "?")
+       : (Math.round(keyOf(s)*10)/10) + " °C";
+}
+
+// ラベルの項目。選んだ順ではなく、この並びで書く
+const LABF = ["key", "Ta", "hold", "rate", "mass", "date", "id", "sample", "op", "comp"];
+function labPart(s, f){
+  return f === "key" ? keyLabel(s)
+       : f === "Ta" ? "Ta " + (s.Ta == null ? "?" : s.Ta) + " °C"
+       : f === "hold" ? (s.hold == null ? "?" : s.hold) + " min"
+       : f === "rate" ? s.rate + L.rateUnit
+       : f === "mass" ? (s.mass == null ? "?" : s.mass.toFixed(2)) + L.mgUnit
+       : f === "date" ? s.date
+       : f === "id" ? s.id.replace("dsc-", "")
+       : f === "sample" ? s.sample
+       : f === "op" ? opOf(s)
+       : (s.compLabel || "?");
+}
+function labText(s){ return LABF.filter(f => state.labs.has(f)).map(f => labPart(s, f)); }
+// 凡例の名前。選んだラベルの項目を先頭に（無ければ並びの値）、曲線を見分けるためのラン ID と段の種類を後ろに足す
+function legendName(s, split, tname){
+  const parts = [];
+  if (state.samples.size > 1 && !split && !state.labs.has("sample")) parts.push(s.sample);
+  parts.push(...(state.labs.size ? labText(s) : [keyLabel(s)]));
+  if (state.color === "rate" && !state.labs.has("rate")) parts.push(s.rate + L.rateUnit);
+  if (!state.labs.has("id")) parts.push(s.id.replace("dsc-", ""));
+  if (state.lane === "run" && state.types.size > 1) parts.push(tname);
+  return (state.stars.has(s.id) ? "★ " : "") + parts.join(" · ");
+}
+
+const RAMP = {cooling: [[8,48,107],[120,180,220]],        // 濃い青 → 明るい青
+              heating: [[120,0,15],[250,120,90]],         // 濃い赤 → 明るい赤
+              isothermal: [[0,68,27],[120,198,121]]};     // 濃い緑 → 明るい緑
+function mix(a, b, u){ return `rgb(${a.map((v,i)=>Math.round(v+(b[i]-v)*u)).join(",")})`; }
+// 速度ごとの色。いま表示している速度を遅い順に並べて、見分けやすい色を順に当てる
+const RATE_COL = ["#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd","#8c564b","#e377c2","#17becf","#7f7f7f","#bcbd22"];
+let RATES = [];
+function colorOf(i, n, type, rate){
+  if (state.color === "rate"){ const j = RATES.indexOf(rate); return RATE_COL[(j < 0 ? 0 : j) % RATE_COL.length]; }
+  const u = n < 2 ? 0 : i/(n-1);
+  if (state.color === "type"){ const r = RAMP[type] || RAMP.heating; return mix(r[0], r[1], u*0.95); }
+  const stops = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[180,222,44]];   // viridis 風
+  const f = u*0.9*(stops.length-1), j = Math.min(stops.length-2, Math.floor(f));
+  return mix(stops[j], stops[j+1], f-j);
+}
+function median(a){ const b = [...a].sort((x,y)=>x-y); return b.length ? b[Math.floor(b.length/2)] : 0; }
+
+// 段の曲線。過渡カット（段頭から state.trim 分）を落とし、残りの先頭で 0 に合わせる
+function series(s){
+  const n = s.y.length, dt = s.dt || 0;
+  const tAt = i => s.t ? s.t[i] : s.t0 + i*dt;            // ラン開始からの時刻 [min]
+  let i0 = 0;
+  const extra = state.trim - D.edge0;
+  if (extra > 0){
+    if (s.t){ while (i0 < n-30 && s.t[i0] - s.t[0] < extra) i0++; }
+    else if (dt > 0) i0 = Math.min(Math.round(extra/dt), Math.max(0, n-30));
+  }
+  const ys = s.y.slice(i0), T = s.T.slice(i0);
+  const base = median(ys.slice(0, 40));
+  let y = ys.map(v => v - base);
+  // 直線ベースライン。2 点（両端、または指定温度に一番近い点）のまわりの中央値を結ぶ直線を引く。
+  // 走査は時間に比例するので、点の番号で直線にすれば温度でも時間でも同じ直線になる
+  if (state.bl !== "none" && y.length > 10){
+    const m = y.length, w = Math.max(5, Math.round(m*0.02));
+    const near = t => { let k = 0; T.forEach((v,i) => { if (Math.abs(v-t) < Math.abs(T[k]-t)) k = i; }); return k; };
+    let a = 0, b = m-1;
+    if (state.bl === "temps"){
+      const ramp = Math.abs(T[m-1] - T[0]) > 1;      // 等温段は端を使う
+      if (ramp && state.blLo != null) a = near(state.blLo);
+      if (ramp && state.blHi != null) b = near(state.blHi);
+      if (a > b) [a, b] = [b, a];
+      if (b - a < 2*w){ a = 0; b = m-1; }
+    }
+    const at = k => median(y.slice(Math.max(0, Math.min(k - (w>>1), m - w)), Math.max(0, Math.min(k - (w>>1), m - w)) + w));
+    const ya = at(a), yb = at(b);
+    y = y.map((v,i) => v - (ya + (yb - ya)*(i - a)/(b - a)));
+  }
+  const x = state.xaxis === "temp" ? T
+          : state.xaxis === "tseg" ? y.map((_,i) => Math.round(((tAt(i0+i) - tAt(0)) + D.edge0)*1000)/1000)
+          : y.map((_,i) => Math.round(tAt(i0+i)*1000)/1000);
+  return {x, y, T};
+}
+
+function draw(){
+  const sel = pick();
+  sel.sort((a,b)=>{ const x=keyOf(a), y=keyOf(b); return x<y?-1:x>y?1:(a.id<b.id?-1:a.id>b.id?1:a.k-b.k); });
+  if (state.rev) sel.reverse();
+  $("#cnt").textContent = L.cnt(sel.length, SEG.filter(inSample).length, new Set(sel.map(s=>s.id)).size);
+  if (!sel.length){ Plotly.purge("plot"); $("#msg").textContent = L.empty; $("#tbl").innerHTML = ""; return; }
+  $("#msg").textContent = "";
+  const S = new Map(sel.map(s => [s.id + "#" + s.k, series(s)]));
+  RATES = uniq(sel.map(s => s.rate));
+  const ser = s => S.get(s.id + "#" + s.k);
+  const scale = s => state.norm === "raw" ? (s.mass || 1) : 1;
+  // ラン単位で積むとき、同じ種類の段が 2 度出るラン（5 段など）は重なるので段を分ける。
+  // 最後の段から遡り、いまのまとまりに同じ種類がもうあれば 1 つ前のまとまりへ（0 = 最後の冷却・等温・昇温）
+  const sub = new Map();
+  { const byRun = new Map();
+    sel.forEach(s => { if (!byRun.has(s.id)) byRun.set(s.id, []); byRun.get(s.id).push(s); });
+    byRun.forEach(list => {
+      let c = 0, seen = new Set();
+      [...list].sort((a,b) => b.k - a.k).forEach(s => {
+        if (seen.has(s.type)){ c++; seen = new Set(); }
+        seen.add(s.type); sub.set(s.id + "#" + s.k, c);
+      });
+    }); }
+  const subOf = s => sub.get(s.id + "#" + s.k);
+  const laneKey = s => state.lane === "run" ? s.id + "|" + subOf(s) : s.id + "#" + s.k;
+  // 段の番号。ラン単位のときは同じランのまとまりを隣り合わせ、時間の早いまとまりを下に置く
+  const laneMap = items => {
+    const lanes = new Map();
+    if (state.lane !== "run"){ items.forEach(s => { const lk = laneKey(s); if (!lanes.has(lk)) lanes.set(lk, lanes.size); }); return lanes; }
+    const nsub = new Map();
+    items.forEach(s => nsub.set(s.id, Math.max(nsub.get(s.id) ?? 0, subOf(s))));
+    nsub.forEach((n, id) => { for (let c = n; c >= 0; c--) lanes.set(id + "|" + c, lanes.size); });
+    return lanes;
+  };
+  // 縦軸＝温度のときは実測温度をそのまま描く（積み上げ・強度は掛けない）
+  const YT = state.yaxis === "temp";
+  const yOf = (s, e, off) => YT ? e.T : e.y.map(v => v*scale(s)*state.gain + off);
+
+  // 試料ごとに横に並べるか、1 枚にまとめるか
+  const names = sampleNames(sel);
+  const split = state.split === "sample" && names.length > 1;
+  const groups = split ? names.map(n => ({name:n, items: sel.filter(s => s.sample === n)}))
+                       : [{name:"", items: sel}];
+  const maxLanes = Math.max(...groups.map(g => laneMap(g.items).size));
+  $("#plot").style.height = state.height === "tall"
+    ? Math.max(420, Math.min(24000, maxLanes * 18 + 140)) + "px" : "";
+
+  const xunit = state.xaxis === "temp" ? " °C" : " min";
+  const traces = [], ann = [], steps = [];
+  const hasLab = state.labs.size > 0;
+  const lmar = (hasLab && state.labPos === "lo") ? 118 : 62;
+  const rmar = (hasLab && state.labPos === "ro") ? 92 : 16;
+  const layout = {margin:{l:lmar, r:rmar, t: split ? 26 : 10, b:46},
+                  showlegend: state.legend,
+                  legend:{font:{size:10}, x:1.01, xanchor:"left", y:1, yanchor:"top", itemsizing:"constant",
+                          bgcolor:"rgba(255,255,255,0.85)", bordercolor:"#e3e2dd", borderwidth:1},
+                  hovermode:"closest", plot_bgcolor:"#fff", paper_bgcolor:"#fff"};
+  const gapx = 0.05, colw = (1 - gapx*(groups.length-1))/groups.length;
+  let nlink = 0;
+  groups.forEach((g, gi) => {
+    const sfx = gi === 0 ? "" : String(gi+1), ax = "x"+sfx, ay = "y"+sfx;
+    // 段の間隔はゲインを掛ける前の振れ幅で決める。こうすると「強度」だけを
+    // 独立に上げ下げでき、間隔はそのままになる。
+    const p2p = Math.max(...g.items.map(s => (Math.max(...ser(s).y) - Math.min(...ser(s).y)) * scale(s)));
+    const step = YT ? 0 : state.off * p2p;
+    const G = state.gain;
+    steps.push(step);
+    const lanes = laneMap(g.items);
+    // 色はランごと（同じランのまとまりは同じ色）
+    const runs = new Map();
+    g.items.forEach(s => { if (!runs.has(s.id)) runs.set(s.id, runs.size); });
+    const labelled = new Set(), gann = [];
+    g.items.forEach(s => {
+      const li = lanes.get(laneKey(s)), off = li*step, m = scale(s);
+      const col = state.lane === "run" ? colorOf(runs.get(s.id), runs.size, s.type, s.rate) : colorOf(li, lanes.size, s.type, s.rate);
+      const e = ser(s), tname = s.type==="cooling" ? L.cooling : s.type==="heating" ? L.heating : L.isothermal;
+      traces.push({
+        type:"scattergl", mode:"lines", x:e.x, y:yOf(s, e, off), line:{width:1.4, color:col},
+        xaxis: ax, yaxis: ay, customdata: e.T,
+        name: legendName(s, split, tname),
+        hovertemplate:`%{x:.1f}${xunit}` + (state.xaxis==="temp" ? "" : `（%{customdata:.1f} °C）`)
+          + (YT ? `<br>%{y:.1f} °C` : `<br>%{y:.3f}`) + `<br>${s.sample} · ${opOf(s)} · ${s.id} · ${s.mass==null?"?":s.mass.toFixed(2)} mg · ${tname} ${s.rate} K/min`
+          + `<br>Ta ${s.Ta==null?"?":s.Ta} °C × ${s.hold==null?"?":s.hold} min · ${L.preHover}: ${s.Tpre} °C<extra></extra>`
+      });
+      if (hasLab && step > 0 && !labelled.has(li)){
+        labelled.add(li);
+        const txt = (state.stars.has(s.id) ? "★ " : "") + labText(s).join(" · ");
+        // 端のどちらが視覚的な左かは、その段の x が増えるか減るかで決まる（冷却は減る）
+        const iL = e.x[0] <= e.x[e.x.length-1] ? 0 : e.x.length-1;
+        const iR = iL === 0 ? e.x.length-1 : 0;
+        const left = state.labPos === "li" || state.labPos === "lo";
+        const out  = state.labPos === "lo" || state.labPos === "ro";
+        const idx  = left ? iL : iR;
+        // 縦の基準。段頭を 0 にしてあるので、その段のベースラインはちょうど off。
+        // 端の値だとピークや谷に当たって上下に跳ねるので、既定はベースライン。
+        const yBase = off;
+        const yMin  = Math.min(...e.y)*m*G + off;
+        const yMax  = Math.max(...e.y)*m*G + off;
+        const yEnd  = e.y[idx]*m*G + off;
+        const yv = state.labY === "min" ? yMin : state.labY === "max" ? yMax
+                 : state.labY === "end" ? yEnd : yBase;
+        // 最小値のときは下にぶら下げる（曲線に被らない）。ほかは上に置く。
+        const yanc = state.labY === "min" ? "top" : "bottom";
+        gann.push({x:e.x[idx], y:yv, xref:ax, yref:ay,
+                   xanchor: left ? (out ? "right" : "left") : (out ? "left" : "right"),
+                   yanchor: yanc,
+                   xshift: (left ? 1 : -1) * (out ? -7 : 6),
+                   yshift: (yanc === "top" ? -3 : 3) + state.labDy,
+                   text:txt, showarrow:false, font:{size:11, color:col}, _txt:txt});
+      }
+    });
+    // 同じランの隣り合う段（冷却の終わり → 次の段の始まり）を点線でつなぐ
+    if (state.connect){
+      const byRun = new Map();
+      g.items.forEach(s => { if (!byRun.has(s.id)) byRun.set(s.id, []); byRun.get(s.id).push(s); });
+      byRun.forEach(list => {
+        list.sort((a,b)=>a.k-b.k);
+        for (let i = 0; i < list.length - 1; i++){
+          const a = list[i], b = list[i+1], ea = ser(a), eb = ser(b);
+          const ya = yOf(a, ea, lanes.get(laneKey(a))*step), yb = yOf(b, eb, lanes.get(laneKey(b))*step);
+          traces.push({type:"scattergl", mode:"lines", xaxis:ax, yaxis:ay,
+                       x:[ea.x[ea.x.length-1], eb.x[0]],
+                       y:[ya[ya.length-1], yb[0]],
+                       line:{width:1, dash:"dot", color:"#8a8a86"}, hoverinfo:"skip", showlegend:false});
+          nlink++;
+        }
+      });
+    }
+    // ラベルの重複省きと間引き（列ごと）
+    let lab = gann;
+    if (state.labOnce) lab = gann.filter((a,i) => i === 0 || a._txt !== gann[i-1]._txt);
+    const MAXLAB = split ? Math.max(8, Math.round(34/groups.length)) : 34;
+    if (lab.length > MAXLAB){
+      const kk = Math.ceil(lab.length / MAXLAB);
+      lab = lab.filter((a,i) => i % kk === 0 || i === lab.length - 1);
+    }
+    lab.forEach(a => ann.push(a));
+    const x0 = gi*(colw+gapx), x1 = x0 + colw;
+    layout["xaxis"+sfx] = {domain:[x0, x1], anchor:ay, title:L.axX(state.xaxis),
+                           zeroline:false, gridcolor:"#ececea"};
+    layout["yaxis"+sfx] = {domain:[0,1], anchor:ax, zeroline:false, gridcolor:"#ececea",
+                           showticklabels: (gi===0 && step===0),
+                           title: gi===0 ? (YT ? L.axX("temp") : L.axY(state.norm==="raw", step>0)) : ""};
+    if (split) ann.push({text:g.name, xref:"paper", yref:"paper", x:(x0+x1)/2, y:1.0,
+                         xanchor:"center", yanchor:"bottom", showarrow:false, font:{size:12.5}});
+  });
+  const unit = state.norm==="raw" ? " mW" : " mW/mg";
+  $("#offv").textContent = steps.map(v=>Math.round(v*100)/100).join(" / ") + unit
+                           + (steps.length>1 ? "（" + L.perColumn + "）" : "");
+  layout.annotations = ann;
+  window._wfInfo = {curves: sel.length, lanes: maxLanes, links: nlink, labels: ann.length,
+                    columns: groups.length, groups: groups.map(g=>g.name)};
+  Plotly.react("plot", traces, layout, {responsive:true, displaylogo:false,
+    toImageButtonOptions:{format:"png", filename:"dsc_waterfall", scale:2}});
+  table(sel, ser);
+}
+
+function table(sel, ser){
+  // 先頭に「代表」列。星をクリックするとそのランが代表になる（repRule = 星）。
+  const isL = i => i===2 || i===3 || i===6 || i===17;
+  const rows = sel.map(s=>{
+    const e = ser(s), iMax = e.y.indexOf(Math.max(...e.y)), iMin = e.y.indexOf(Math.min(...e.y));
+    const tname = s.type==="cooling" ? L.cooling : s.type==="heating" ? L.heating : L.isothermal;
+    const on = state.stars.has(s.id);
+    return [`<a class="star${on?" on":""}" href="#" data-star="${s.id}" title="${s.id}">${on?"★":"☆"}</a>`,
+            keyLabel(s), s.id.replace("dsc-",""), s.date, s.mass==null?"?":s.mass.toFixed(3), s.nseg,
+            tname, s.rate, s.Ta==null?"?":s.Ta, s.hold==null?"?":s.hold, s.Tpre, s.T1==null?"?":s.T1,
+            e.T[0], e.T[e.T.length-1], s.Tmin, e.T[iMax], e.T[iMin], s.hist];
+  });
+  const th = [L.starCol, ...L.th];
+  $("#tbl").innerHTML = `<tr>${th.map((x,i)=>`<th class="${isL(i)?'l':''}">${x}</th>`).join("")}</tr>`
+    + rows.map(r=>`<tr>${r.map((x,i)=>`<td class="${isL(i)?'l':''}">${x}</td>`).join("")}</tr>`).join("");
+  $("#tbl").querySelectorAll("[data-star]").forEach(a => a.onclick = ev => {
+    ev.preventDefault(); toggleStar(a.dataset.star);
+  });
+}
+
+// ---- PNG 保存（いまの図＋条件の脚注をそのまま 1 枚に） ----------------------
+function selSummary(){
+  const pool = SEG.filter(inSample);
+  // 全部なら「すべて」、スライダで絞った連続の範囲なら「下限–上限」、ばらばらなら列挙
+  const all = (set, vals) => {
+    const u = [...new Set(vals)];
+    if (set.size >= u.length) return L.allSel;
+    const nums = uniq(u.filter(v => v != null)), on = nums.filter(v => set.has(v));
+    const i0 = nums.indexOf(on[0]), i1 = nums.indexOf(on[on.length-1]);
+    if (on.length > 2 && i1 - i0 + 1 === on.length) return on[0] + "–" + on[on.length-1] + (set.has("?") ? "/?" : "");
+    return [...set].join("/");
+  };
+  const typ = ["cooling","isothermal","heating"].filter(t=>state.types.has(t))
+              .map(t=>t==="cooling"?L.cooling:t==="heating"?L.heating:L.isothermal).join("/");
+  const xa = state.xaxis==="temp" ? L.xTemp : state.xaxis==="tseg" ? L.xTseg : L.xTrun;
+  const rr = state.repRule==="mass" ? L.repMass : state.repRule==="first" ? L.repFirst : L.repNew;
+  const i = window._wfInfo || {};
+  const now = new Date(); const p2 = n => String(n).padStart(2,"0");
+  const ts = `${now.getFullYear()}-${p2(now.getMonth()+1)}-${p2(now.getDate())} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
+  return {
+    lines: [
+      `${D.ana} · ${[...state.samples].join("+")||L.all} · ${L.xaxis}: ${xa} · ${L.yaxis}: ${state.yaxis==="temp" ? L.yTemp : L.yHf} · ${L.types}: ${typ} · ${L.steps}: ${all(state.steps, pool.map(s=>s.nseg))}`,
+      `${L.split}: ${state.split==="sample"?L.splitSample:L.splitOne}${state.ops.size < new Set(pool.map(opOf)).size ? " · " + L.ops + ": " + [...state.ops].join("/") : ""} · ${L.rates}: ${all(state.rates, pool.map(s=>s.rate))} · ${L.tas}: ${all(state.tas, pool.map(s=>s.Ta1))}`
+        + ` · ${L.holds}: ${all(state.holds, pool.map(s=>s.hold5))} · ${L.pres}: ${all(state.pres, pool.map(s=>s.Tpre5))}`
+        + `${state.last ? " · " + L.lastonly : ""}${state.rep ? " · " + L.rep + " (" + rr + ")" : ""}`,
+      `${$("#cnt").textContent} · ${L.off} ${$("#offv").textContent} · ${L.trim} ${state.trim} min · ${L.footNote}${state.bl !== "none" ? " · " + L.blFoot(state.bl, state.blLo ?? "–", state.blHi ?? "–") : ""}${state.gain !== 1 ? " · " + L.gain + " ×" + +state.gain.toPrecision(3) : ""} · ${ts}`
+    ],
+    file: ["dsc_waterfall", [...state.samples].join("-")||"all",
+           [...state.steps].join("-")+"step", [...state.types].map(t=>t[0]).join(""), state.xaxis, state.yaxis==="temp" ? "yT" : "",
+           state.rep?"rep":"", `${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-${p2(now.getHours())}${p2(now.getMinutes())}`]
+          .filter(Boolean).join("_").replace(/[^\w.-]/g,"-") + ".png"
+  };
+}
+
+function savePng(){
+  const btn = $("#savepng"), div = $("#plot");
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "…";
+  const sum = selSummary(), scale = 2;
+  Plotly.toImage(div, {format:"png", scale:scale, width:div.offsetWidth, height:div.offsetHeight})
+    .then(url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }))
+    .then(im => {
+      const pad = 10*scale, fs = 13*scale, lh = Math.round(fs*1.45);
+      const FONT = `${fs}px -apple-system, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif`;
+      // 幅に収まらない脚注は " · " で折り返す
+      const meas = document.createElement("canvas").getContext("2d");
+      meas.font = FONT;
+      const wide = im.width - 2*pad, lines = [];
+      sum.lines.forEach(t => {
+        if (meas.measureText(t).width <= wide){ lines.push(t); return; }
+        let cur = "";
+        t.split(" · ").forEach(p => {
+          const trial = cur ? cur + " · " + p : p;
+          if (cur && meas.measureText(trial).width > wide){ lines.push(cur); cur = p; } else cur = trial;
+        });
+        if (cur) lines.push(cur);
+      });
+      const cv = document.createElement("canvas");
+      cv.width = im.width; cv.height = im.height + lines.length*lh + 2*pad;
+      const c = cv.getContext("2d");
+      c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height);
+      c.drawImage(im, 0, 0);
+      c.strokeStyle = "#dddddd"; c.beginPath(); c.moveTo(0, im.height+1); c.lineTo(cv.width, im.height+1); c.stroke();
+      c.fillStyle = "#666"; c.textBaseline = "top"; c.font = FONT;
+      lines.forEach((t, i) => c.fillText(t, pad, im.height + pad + i*lh));
+      cv.toBlob(async b => {
+        await saveFile(sum.file, b);
+        btn.disabled = false; btn.textContent = label;
+        window._wfPng = {file: sum.file, w: cv.width, h: cv.height, lines: lines};
+      }, "image/png");
+    })
+    .catch(e => { btn.disabled = false; btn.textContent = label; $("#msg").textContent = "PNG: " + e; });
+}
+
+init();
+</script>
+</body>
+</html>

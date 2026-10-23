@@ -16,6 +16,19 @@ DB の書き出し・取り込みに対応しています。HTML 1 ファイル�
   v10 ではファイルごとのワークフロー状態（raw-checked / analysed / excluded）と、
   大量のキャッシュを 1 測定ずつキーボードで確認していく Review モードを搭載。
 
+## DSC waterfall（単体）
+
+**`webapp/dsc_waterfall.html`** — DSC ファイル（Pyris .txt / Shimadzu .txt・.tad）を選ぶかフォルダごとドロップすると、
+冷却・等温・昇温の段を縦に積んだ waterfall にする。試料・実験者・段数・種類・速度・前の最高温度・
+保持温度 Ta・保持時間で絞り込み、並べ替え、ラベル・凡例・PNG 保存ができる。読み込みはブラウザの中だけで、
+データはどこにも送らない（大きなファイルは 1 本ずつ段に縮めてから元を捨てるので、数 GB でも読める）。
+
+- 試料名・質量・実験者・測定日時はファイルのヘッダー（Sample ID / Sample Weight / Operator ID / Data Collected、
+  Shimadzu は 試料名 / 試料量 / オペレータ名 / 収集日）から取る。試料はフォルダ名でまとめることもできる
+- 段の分け方と熱流の加工（mW/mg・発熱上向き・段頭を 0）は、解析ライブラリ tagkit の `dsc_waterfall_html.py` と同じ。
+  263 ラン / 1222 段で全項目が一致することを確かめてある
+- 作り方は [`waterfall/build.py`](waterfall/build.py)（`python3 waterfall/build.py` で組み立て直す）
+
 ## http://localhost で起動する（推奨）
 
 `file://` で開くと、ディスク逼迫時に Chrome が IndexedDB キャッシュ（DB とプロジェクト）を

@@ -12,6 +12,20 @@ export/import).
 
 - **`webapp/dsc_analyzer_v10.html`** — tabbed UI (DB · **Review** · Combined · Patterns · Series · Feature DB) with Analysis Mode (Tm / ΔHm / ΔSm), isothermal Avrami kinetics, reusable fit presets, and the v10 triage layer — per-file workflow status (raw-checked / analysed / excluded) plus a keyboard-driven Review mode for walking a large cache one run at a time.
 
+## DSC waterfall (standalone)
+
+**`webapp/dsc_waterfall.html`** — choose DSC files (Pyris .txt / Shimadzu .txt, .tad) or drop a whole folder, and the
+cooling, isothermal and heating segments are stacked as a waterfall. Filter by sample, operator, number of steps, segment
+type, rate, highest temperature reached before the segment, hold temperature Ta and hold time; sort, label, and save
+the plot as PNG. Everything is read inside the browser and nothing is uploaded (each file is reduced to its segments
+and then dropped, so a few GB of raw data still fits).
+
+- Sample name, mass, operator and date come from the file header (Sample ID / Sample Weight / Operator ID /
+  Data Collected; for Shimadzu 試料名 / 試料量 / オペレータ名 / 収集日). Samples can also be grouped by folder name.
+- Segmentation and heat-flow processing (mW/mg, exotherm up, each segment zeroed at its start) are the same as
+  `dsc_waterfall_html.py` in the tagkit analysis library; checked field by field on 263 runs / 1222 segments.
+- Built by [`waterfall/build.py`](waterfall/build.py) (`python3 waterfall/build.py` rebuilds it).
+
 ## Launch on http://localhost (recommended)
 
 Opening the app as `file://` lets Chrome evict the IndexedDB cache (your DB /
